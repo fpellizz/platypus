@@ -2,7 +2,7 @@
 // Avvia il "cuore" dell'ufficio: stato + fonti + server HTTP locale (solo 127.0.0.1).
 //   GET  /                   la pagina dell'ufficio
 //   GET  /events             stream SSE dello stato (evento "replay" per il seminterrato)
-//   POST /agent-office-hook  eventi dagli hook di Claude Code
+//   POST /platypus-hook      eventi dagli hook di Claude Code (anche il vecchio /agent-office-hook)
 //   POST /api/demo           {on}
 //   POST /api/cowork         {on}
 //   GET/POST /api/settings   soglie degli avvisi, budget, prezzo di stima
@@ -12,6 +12,7 @@
 //   POST /api/resume         {key}   riprende una sessione chiusa in un nuovo terminale
 //   POST /api/open-folder    {sid|key}
 
+const { dataDir } = require('../paths');
 const http = require('http');
 const fs = require('fs');
 const os = require('os');
@@ -31,11 +32,11 @@ const osint = require('./osint');
 const { Stats } = require('./stats');
 const hooks = require('./hooks');
 
-const DEFAULT_PORT = Number(process.env.AGENT_OFFICE_PORT) || 47800;
+const DEFAULT_PORT = Number(process.env.PLATYPUS_PORT) || 47800;
 const RENDERER = path.join(__dirname, '..', '..', 'renderer');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
 
-function defaultSettingsPath() { return path.join(os.homedir(), '.agent-office', 'settings.json'); }
+function defaultSettingsPath() { return path.join(dataDir(), 'settings.json'); }
 function loadSettings(p) { try { return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(p, 'utf8')) }; } catch { return { ...DEFAULT_SETTINGS }; } }
 function saveSettings(p, s) { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(s, null, 2)); } catch {} }
 
@@ -76,7 +77,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
   const coworkTimer = setInterval(scanCowork, 90 * 1000);
 
   // ---- altre installazioni di Claude Code sullo stesso computer: cartelle indicate nelle opzioni
-  // o in AGENT_OFFICE_CLAUDE_DIRS, e su Windows le distribuzioni WSL accese (\\wsl.localhost\<distro>\home\<utente>\.claude)
+  // o in PLATYPUS_CLAUDE_DIRS, e su Windows le distribuzioni WSL accese (\\wsl.localhost\<distro>\home\<utente>\.claude)
   const extraWatchers = new Map();
   async function wslClaudeDirs() {
     if (process.platform !== 'win32') return [];
@@ -95,7 +96,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     return dirs;
   }
   async function scanExtraClaude() {
-    const list = String(state.settings.claudeDirs || '') + ';' + (process.env.AGENT_OFFICE_CLAUDE_DIRS || '');
+    const list = String(state.settings.claudeDirs || '') + ';' + (process.env.PLATYPUS_CLAUDE_DIRS || '');
     const dirs = list.split(/[;\n]/).map(x => x.trim().replace(/^"|"$/g, '')).filter(Boolean).concat(await wslClaudeDirs().catch(() => []));
     const main = path.resolve(base || claudeDir()).toLowerCase();
     for (const d of new Set(dirs)) {
@@ -138,7 +139,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
       out = { behavior: 'allow' };
       if (decision === 'always' && ap.always) out.updatedPermissions = ap.suggestions;
     } else if (decision === 'deny') {
-      out = { behavior: 'deny', message: tr('L\'utente ha rifiutato questa richiesta dall\'ufficio (Agent Office).') };
+      out = { behavior: 'deny', message: tr('L\'utente ha rifiutato questa richiesta dall\'ufficio (Platypus).') };
     }
     try {
       if (out) { ap.res.writeHead(200, { 'Content-Type': 'application/json' }); ap.res.end(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: out } })); }
@@ -222,12 +223,14 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     try { j = JSON.parse(body || '{}'); } catch {}
     switch (url.pathname) {
       case hooks.MARK:
+      case hooks.LEGACY:
         try {
-          if (process.env.AGENT_OFFICE_DEBUG) console.log('[hook]', j.hook_event_name, j.agent_type || '', j.tool_name || '', j.notification_type || '');
+          if (process.env.PLATYPUS_DEBUG) console.log('[hook]', j.hook_event_name, j.agent_type || '', j.tool_name || '', j.notification_type || '');
           state.applyHook(j);
         } catch {}
         res.writeHead(204); return res.end(); // nessun output: Claude Code non deve ricevere nulla
-      case hooks.MARK + '/permission': {
+      case hooks.MARK + '/permission':
+      case hooks.LEGACY + '/permission': {
         // hook sincrono: se l'ufficio è aperto e lo vuoi, tieni la richiesta finché non rispondi
         try { state.applyHook(j); } catch {}
         const hold = j.hook_event_name === 'PermissionRequest' && state.settings.approveFromOffice !== false &&

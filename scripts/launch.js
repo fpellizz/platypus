@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Avvio di Agent Office da sorgente, uguale su Windows, macOS e Linux.
+// Avvio di Platypus da sorgente, uguale su Windows, macOS e Linux.
 //   node scripts/launch.js              finestra desktop (Electron)
 //   node scripts/launch.js --web        solo browser: non serve installare nulla
 //   node scripts/launch.js --demo       con la demo accesa
@@ -17,15 +17,16 @@ const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
+require(path.join(ROOT, 'src', 'paths')).dataDir(); // copia una volta i dati del vecchio Agent Office
 const args = process.argv.slice(2);
 const has = f => args.includes(f);
 const passThrough = args.filter(a => !['--web', '--background', '--setup', '--shortcut', '--electron'].includes(a));
 const IS_WIN = process.platform === 'win32';
-const LOG_DIR = path.join(os.homedir(), '.agent-office');
+const LOG_DIR = path.join(os.homedir(), '.platypus');
 const LOG = path.join(LOG_DIR, 'launch.log');
 
-function say(msg) { console.log('[agent-office] ' + msg); }
-function fail(msg) { console.error('[agent-office] ' + msg); process.exitCode = 1; }
+function say(msg) { console.log('[platypus] ' + msg); }
+function fail(msg) { console.error('[platypus] ' + msg); process.exitCode = 1; }
 
 // ---------------------------------------------------------------- requisiti
 const [major] = process.versions.node.split('.').map(Number);
@@ -40,7 +41,7 @@ function lockHash() {
   try { return crypto.createHash('sha1').update(fs.readFileSync(path.join(ROOT, 'package-lock.json'))).update(fs.readFileSync(path.join(ROOT, 'package.json'))).digest('hex'); }
   catch { return 'none'; }
 }
-const MARK = path.join(ROOT, 'node_modules', '.agent-office-deps');
+const MARK = path.join(ROOT, 'node_modules', '.platypus-deps');
 function electronPath() {
   try {
     const p = require(path.join(ROOT, 'node_modules', 'electron'));
@@ -106,7 +107,7 @@ async function runDesktop() {
   if (!depsOk() && !installDeps()) { say('Senza le dipendenze apro la modalità browser, che non ne ha bisogno.'); return runWeb(); }
   const background = has('--background');
   const extra = [];
-  if (process.platform === 'linux' && process.env.AGENT_OFFICE_NO_SANDBOX === '1') extra.push('--no-sandbox');
+  if (process.platform === 'linux' && process.env.PLATYPUS_NO_SANDBOX === '1') extra.push('--no-sandbox');
   let r = await startElectron(extra, background);
   // alcune distribuzioni Linux (es. Ubuntu 24.04 con AppArmor) bloccano la sandbox di Electron scaricato da npm
   if (r.exited && process.platform === 'linux' && !extra.includes('--no-sandbox') && /sandbox/i.test(logText())) {
@@ -116,13 +117,13 @@ async function runDesktop() {
   }
   if (r.exited && r.code !== 0) {
     const log = logText().trim().split('\n').slice(-8).join('\n');
-    if (/porta|port|EADDRINUSE|già aperto/i.test(log)) { say('Agent Office è già aperto.'); process.exit(0); }
+    if (/porta|port|EADDRINUSE|già aperto/i.test(log)) { say('Platypus è già aperto.'); process.exit(0); }
     say('La finestra desktop non è partita:\n' + log);
     say('Apro la modalità browser al suo posto.');
     return runWeb();
   }
   if (r.error) { say('Electron non si avvia (' + r.error + '): apro la modalità browser.'); return runWeb(); }
-  if (background) { if (r.child) r.child.unref(); say('Agent Office è partito. Puoi chiudere questo terminale.'); process.exit(0); }
+  if (background) { if (r.child) r.child.unref(); say('Platypus è partito. Puoi chiudere questo terminale.'); process.exit(0); }
   if (r.child) r.child.on('exit', code => process.exit(code || 0));
 }
 

@@ -1,7 +1,5 @@
 {
-  "Agent Office": "Agent Office",
-  "AGENT": "AGENT",
-  "OFFICE": "OFFICE",
+  "Platypus": "Platypus",
   "FUMETTI": "BUBBLES",
   "SEGUI": "FOLLOW",
   "DEMO": "DEMO",
@@ -85,7 +83,7 @@
   "Riduci": "Minimize",
   "Chiudi": "Close",
   "Piani": "Floors",
-  "Report giornaliero · Agent Office": "Daily report · Agent Office",
+  "Report giornaliero · Platypus": "Daily report · Platypus",
   "REPORT DELLA GIORNATA": "DAILY REPORT",
   "< GIORNO PRIMA": "< PREVIOUS DAY",
   "GIORNO DOPO >": "NEXT DAY >",
@@ -95,7 +93,7 @@
   "Giorno del report": "Report day",
   "TEST": "TESTS",
   "nessuno": "nobody",
-  "Report Agent Office del {day}": "Agent Office report for {day}",
+  "Report Platypus del {day}": "Platypus report for {day}",
   "Costo: {cost} · Token: {tokens} · Sessioni: {sessions} · Sottoagenti conclusi: {completed}": "Cost: {cost} · Tokens: {tokens} · Sessions: {sessions} · Subagents finished: {completed}",
   "Commit: {commits} · PR: {prs} · Avvisi: {alerts}": "Commits: {commits} · PRs: {prs} · Alerts: {alerts}",
   "Per progetto:": "By project:",
@@ -131,8 +129,10 @@
   "MANI DI BURRO": "BUTTERFINGERS",
   "{n} errori": "{n} errors",
   "COPIATO!": "COPIED!",
-  "Report Agent Office {day}": "Agent Office report {day}",
+  "Report Platypus {day}": "Platypus report {day}",
   "mappa della realtà dell'agente selezionato": "map of reality of the selected agent",
   "MAPPA DELLA REALTÀ": "MAP OF REALITY",
-  ": dalla scheda di un agente (o con il tasto G) vedi il suo territorio, cioè i file che conosce con la nebbia su tutto il resto, e la sua traiettoria in uno spazio a 7 dimensioni che dice come sta lavorando.": ": from an agent's card (or with the G key) you see its territory, the files it knows with fog over everything else, and its trajectory in a 7-dimensional space that shows how it is working."
+  ": dalla scheda di un agente (o con il tasto G) vedi il suo territorio, cioè i file che conosce con la nebbia su tutto il resto, e la sua traiettoria in uno spazio a 7 dimensioni che dice come sta lavorando.": ": from an agent's card (or with the G key) you see its territory, the files it knows with fog over everything else, and its trajectory in a 7-dimensional space that shows how it is working.",
+  "PLATY": "PLATY",
+  "PUS": "PUS"
 }

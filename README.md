@@ -1,4 +1,4 @@
-# Agent Office
+# Platypus
 
 Un palazzo in pixel-art anni '80 dove vedi i tuoi agenti di **Claude Code** al lavoro, in tempo reale.
 Gira su **Windows, macOS e Linux**: si clona da git e si lancia, senza installer.
@@ -28,8 +28,8 @@ Le novità di ogni versione sono in [CHANGELOG.md](CHANGELOG.md).
 Serve **[Node.js](https://nodejs.org) 20 o più recente** (e Git per clonare). Tutto il resto lo installa il lanciatore al primo avvio.
 
 ```sh
-git clone <indirizzo-del-repository> agent-office
-cd agent-office
+git clone <indirizzo-del-repository> platypus
+cd platypus
 ```
 
 | Sistema | Avvio |
@@ -61,7 +61,7 @@ L'ufficio legge già i transcript che Claude Code scrive nella cartella `~/.clau
 - menu dell'icona nella barra di sistema → *Collega a Claude Code*, oppure
 - `npm run hooks:install` (per toglierli: `npm run hooks:uninstall`).
 
-Gli hook vengono aggiunti a `~/.claude/settings.json`. Le tue impostazioni restano intatte e la prima volta viene salvata una copia in `settings.json.agent-office-backup`. Valgono per le sessioni aperte dopo l'installazione. Se l'ufficio è chiuso falliscono in silenzio e Claude Code lavora come sempre.
+Gli hook vengono aggiunti a `~/.claude/settings.json`. Le tue impostazioni restano intatte e la prima volta viene salvata una copia in `settings.json.platypus-backup`. Valgono per le sessioni aperte dopo l'installazione. Se l'ufficio è chiuso falliscono in silenzio e Claude Code lavora come sempre.
 
 ## Privacy
 

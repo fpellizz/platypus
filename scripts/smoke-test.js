@@ -35,7 +35,7 @@ function get(port, p, method = 'GET', body) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
-  console.log(`Agent Office smoke test · ${process.platform} ${process.arch} · Node ${process.versions.node}`);
+  console.log(`Platypus smoke test · ${process.platform} ${process.arch} · Node ${process.versions.node}`);
 
   console.log('sintassi');
   for (const f of walk(path.join(ROOT, 'src')).concat(walk(path.join(ROOT, 'renderer')), walk(path.join(ROOT, 'scripts')))) {
@@ -49,7 +49,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(i.status === 0, i.stdout.trim());
 
   console.log('motore');
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-office-test-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-'));
   const base = path.join(tmp, 'claude');
   fs.mkdirSync(path.join(base, 'projects'), { recursive: true });
   const { startCore } = require(path.join(ROOT, 'src', 'core'));
@@ -69,9 +69,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(map.ok && map.nodes.length > 0 && map.trajectories.length > 0, `mappa della realtà: ${map.nodes.length} luoghi, ${map.trajectories.length} traiettorie`);
   const mind = JSON.parse((await get(port, `/api/agentmind?sid=${sid}&aid=main`)).body);
   ok(mind.ok && mind.pieces && mind.pieces.length > 0, `bolla del contesto: ${mind.pieces ? mind.pieces.length : 0} pezzi`);
-  const hook = await get(port, '/agent-office-hook', 'POST', JSON.stringify({ session_id: 'smoke-1', hook_event_name: 'PreToolUse', cwd: tmp, tool_name: 'Read', tool_input: { file_path: 'a.txt' } }));
+  const hook = await get(port, '/platypus-hook', 'POST', JSON.stringify({ session_id: 'smoke-1', hook_event_name: 'PreToolUse', cwd: tmp, tool_name: 'Read', tool_input: { file_path: 'a.txt' } }));
   ok(hook.status === 204, 'hook ricevuto → ' + hook.status);
-  const perm = await get(port, '/agent-office-hook/permission', 'POST', JSON.stringify({ session_id: 'smoke-1', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' } }));
+  const perm = await get(port, '/platypus-hook/permission', 'POST', JSON.stringify({ session_id: 'smoke-1', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' } }));
   ok(perm.status === 204, 'permesso senza finestre aperte: decide il terminale → ' + perm.status);
   const bad = await new Promise(resolve => {
     const req = http.request({ host: '127.0.0.1', port, path: '/api/state', headers: { Host: 'evil.example' } }, res => resolve(res.statusCode));

@@ -1,5 +1,5 @@
 @echo off
-rem Agent Office: doppio clic per avviare (Windows)
+rem Platypus: doppio clic per avviare (Windows)
 cd /d "%~dp0"
 where node >NUL 2>&1
 if errorlevel 1 (

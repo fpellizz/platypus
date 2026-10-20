@@ -1,5 +1,5 @@
 'use strict';
-/* Agent Office — palazzo pixel-art anni '80 con le sessioni di Claude Code.
+/* Platypus — palazzo pixel-art anni '80 con le sessioni di Claude Code.
    Atrio con il tabellone delle sessioni; un piano per sessione, organizzato come un organigramma:
    in alto l'ufficio a vetri del capo (CLAUDE), sotto le sale (una per tipo di sottoagente) e i
    reparti dei capi reparto (sottoagenti che hanno lanciato altri agenti).
@@ -491,7 +491,7 @@ function costsHtml() {
   return `<h2>${tr('COSTI NEL TEMPO')} <span>${tr('ultimi 14 giorni · totale {sum} · ultimi 7 giorni {week}', { sum: money(sum), week: money(week) })}</span></h2>` +
     `<svg class="costs" viewBox="0 0 ${Wd} ${Hd}" preserveAspectRatio="none" role="img" aria-label="${esc(tr('Costi degli ultimi 14 giorni'))}">${svg}</svg>` +
     `<div class="legend2">${top.map((p, k) => `<span><i style="background:${pal[k]}"></i>${esc(p)} · ${money(projTot[p])}</span>`).join('')}${Object.keys(projTot).length > top.length ? `<span><i style="background:${pal[6]}"></i>${tr('altri')}</span>` : ''}</div>` +
-    `<div class="foot">${esc(snap && snap.demo && !d.some(x => x.total && !snap.demo) ? tr('Le statistiche si accumulano mentre l\'ufficio è aperto e restano salvate in .agent-office/stats.json (in demo: dati finti).') : tr('Le statistiche si accumulano mentre l\'ufficio è aperto e restano salvate in .agent-office/stats.json.'))}</div>`;
+    `<div class="foot">${esc(snap && snap.demo && !d.some(x => x.total && !snap.demo) ? tr('Le statistiche si accumulano mentre l\'ufficio è aperto e restano salvate in .platypus/stats.json (in demo: dati finti).') : tr('Le statistiche si accumulano mentre l\'ufficio è aperto e restano salvate in .platypus/stats.json.'))}</div>`;
 }
 function honorsHtml() {
   const h = honorsData || {};
@@ -529,7 +529,7 @@ function drawLobby(t) {
   });
   R(cx - 4, WALL_H - 22, 3, 5, C.dgrey); R(cx - 3, WALL_H - 21, 1, 1, ((t / 500) | 0) % 2 ? C.yellow : C.dgrey);
   // insegna
-  const label = 'AGENT OFFICE';
+  const label = 'PLATYPUS';
   const tw = label.length * 8;
   R(cx - tw / 2 - 5, 1, tw + 10, 12, '#120c22');
   pixText(label, cx - tw / 2, 2, Math.sin(t / 900) > -0.97 ? C.pink : '#5a2a44', 7);
@@ -2405,7 +2405,7 @@ function updateTicker() {
   tickerSig = sig;
   const el = $('#ticker-inner');
   const fmt = t => new Date(t).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
-  const items = log.length ? log : [{ t: Date.now(), text: tr('Benvenuto in Agent Office: qui vedi i tuoi agenti di Claude Code al lavoro'), kind: 'session' }];
+  const items = log.length ? log : [{ t: Date.now(), text: tr('Benvenuto in Platypus: qui vedi i tuoi agenti di Claude Code al lavoro'), kind: 'session' }];
   el.innerHTML = items.map(l => `<span class="e k-${esc(l.kind)}"><span class="t">${fmt(l.t)}</span>${l.project ? '[' + esc(l.project) + '] ' : ''}${esc(l.text)}</span>`).join('');
   const first = el.firstElementChild;
   if (first) { first.classList.add('new'); }

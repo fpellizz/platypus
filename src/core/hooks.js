@@ -1,12 +1,13 @@
 'use strict';
-// Installa / rimuove gli hook di Agent Office in <config>/settings.json di Claude Code.
+// Installa / rimuove gli hook di Platypus in <config>/settings.json di Claude Code.
 // Gli hook sono "async": non rallentano mai Claude Code. Se l'ufficio è chiuso, curl fallisce in silenzio.
 
 const fs = require('fs');
 const path = require('path');
 const { claudeDir } = require('./sources');
 
-const MARK = '/agent-office-hook';
+const MARK = '/platypus-hook';
+const LEGACY = '/agent-office-hook'; // hook installati quando l'app si chiamava Agent Office
 const EVENTS = [
   'SessionStart', 'SessionEnd', 'UserPromptSubmit',
   'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest',
@@ -33,7 +34,7 @@ function load(p) {
   return JSON.parse(raw); // se il file è JSON non valido meglio fermarsi che rovinarlo
 }
 
-function isOurs(h) { return h && typeof h.command === 'string' && h.command.includes(MARK); }
+function isOurs(h) { return h && typeof h.command === 'string' && (h.command.includes(MARK) || h.command.includes(LEGACY)); }
 
 function strip(settings) {
   if (!settings.hooks) return settings;
@@ -52,7 +53,8 @@ function strip(settings) {
 
 function backup(p) {
   if (!fs.existsSync(p)) return null;
-  const b = p + '.agent-office-backup';
+  const b = p + '.platypus-backup';
+  if (fs.existsSync(p + '.agent-office-backup')) return p + '.agent-office-backup'; // copia originale già fatta dalla versione precedente
   if (!fs.existsSync(b)) fs.copyFileSync(p, b);
   return b;
 }
@@ -95,8 +97,9 @@ function outdated({ base } = {}) {
   try {
     const s = load(settingsPath(base));
     const groups = (s.hooks && s.hooks.PermissionRequest) || [];
-    return !groups.some(g => (g.hooks || []).some(h => isOurs(h) && h.command.includes(PERM)));
+    const legacy = Object.values(s.hooks || {}).some(gs => (gs || []).some(g => (g.hooks || []).some(h => typeof h.command === 'string' && h.command.includes(LEGACY))));
+    return legacy || !groups.some(g => (g.hooks || []).some(h => isOurs(h) && h.command.includes(PERM)));
   } catch { return false; }
 }
 
-module.exports = { install, uninstall, status, outdated, hookCommand, MARK, PERM, EVENTS };
+module.exports = { install, uninstall, status, outdated, hookCommand, MARK, LEGACY, PERM, EVENTS };

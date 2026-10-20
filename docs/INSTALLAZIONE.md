@@ -1,6 +1,6 @@
-# Installazione di Agent Office
+# Installazione di Platypus
 
-Agent Office si usa direttamente dai sorgenti: si clona il repository e si lancia. Non ci sono installer né programmi già compilati da firmare: la finestra desktop è [Electron](https://www.electronjs.org), che npm scarica già pronto per il tuo sistema al primo avvio.
+Platypus si usa direttamente dai sorgenti: si clona il repository e si lancia. Non ci sono installer né programmi già compilati da firmare: la finestra desktop è [Electron](https://www.electronjs.org), che npm scarica già pronto per il tuo sistema al primo avvio.
 
 - [Requisiti](#requisiti)
 - [Windows](#windows) · [macOS](#macos) · [Linux](#linux)
@@ -33,8 +33,8 @@ Per controllare cosa hai già: `node -v` e `git --version`.
    Chiudi e riapri il terminale, così i nuovi comandi entrano nel PATH.
 2. Clona il repository (vedi [Repository privato](#repository-privato) se chiede le credenziali):
    ```powershell
-   git clone <indirizzo-del-repository> $HOME\agent-office
-   cd $HOME\agent-office
+   git clone <indirizzo-del-repository> $HOME\platypus
+   cd $HOME\platypus
    ```
 3. Avvia: doppio clic su **`start.cmd`** in Esplora file, oppure `npm start` dal terminale.
 4. Facoltativo: `npm run shortcut` mette un'icona sul Desktop. La voce nel **menu Start** la crea l'app da sola al primo avvio; serve anche per le notifiche di Windows.
@@ -48,11 +48,11 @@ Per controllare cosa hai già: `node -v` e `git --version`.
    In alternativa scarica Node.js da nodejs.org; Git arriva anche con gli strumenti a riga di comando di Xcode (`xcode-select --install`).
 2. Clona il repository:
    ```sh
-   git clone <indirizzo-del-repository> ~/agent-office
-   cd ~/agent-office
+   git clone <indirizzo-del-repository> ~/platypus
+   cd ~/platypus
    ```
 3. Avvia: doppio clic su **`start.command`** nel Finder, oppure `./start.sh` dal Terminale.
-4. Facoltativo: `npm run shortcut` crea **Agent Office.app** nella cartella Applicazioni del tuo utente (`~/Applications`), da aprire dal Finder o da trascinare nel Dock.
+4. Facoltativo: `npm run shortcut` crea **Platypus.app** nella cartella Applicazioni del tuo utente (`~/Applications`), da aprire dal Finder o da trascinare nel Dock.
 
 Note:
 - La prima volta macOS potrebbe chiederti il permesso di mostrare le notifiche: concedilo per gli avvisi dei permessi.
@@ -73,11 +73,11 @@ Note:
    ```
 2. Clona e avvia:
    ```sh
-   git clone <indirizzo-del-repository> ~/agent-office
-   cd ~/agent-office
+   git clone <indirizzo-del-repository> ~/platypus
+   cd ~/platypus
    ./start.sh
    ```
-3. Facoltativo: `npm run shortcut` aggiunge **Agent Office** al menu delle applicazioni.
+3. Facoltativo: `npm run shortcut` aggiunge **Platypus** al menu delle applicazioni.
 
 Electron ha bisogno delle librerie grafiche che i desktop hanno quasi sempre già installate. Se manca qualcosa, su Debian/Ubuntu:
 ```sh
@@ -113,9 +113,9 @@ npm run hooks:status
 npm run hooks:uninstall
 ```
 
-Gli hook sono comandi `curl` verso `127.0.0.1:47800`, aggiunti a `~/.claude/settings.json` accanto alle tue impostazioni, che restano intatte (copia di sicurezza in `settings.json.agent-office-backup`). `curl` c'è già su Windows 10/11, macOS e quasi tutte le distribuzioni Linux. Valgono per le sessioni di Claude Code aperte dopo l'installazione.
+Gli hook sono comandi `curl` verso `127.0.0.1:47800`, aggiunti a `~/.claude/settings.json` accanto alle tue impostazioni, che restano intatte (copia di sicurezza in `settings.json.platypus-backup`). `curl` c'è già su Windows 10/11, macOS e quasi tutte le distribuzioni Linux. Valgono per le sessioni di Claude Code aperte dopo l'installazione.
 
-Se usi `CLAUDE_CONFIG_DIR`, avvia l'ufficio con la stessa variabile. Se cambi porta con `AGENT_OFFICE_PORT`, reinstalla gli hook.
+Se usi `CLAUDE_CONFIG_DIR`, avvia l'ufficio con la stessa variabile. Se cambi porta con `PLATYPUS_PORT`, reinstalla gli hook.
 
 ## Modalità browser
 
@@ -135,21 +135,21 @@ Usa solo Node.js, senza Electron e senza `npm install`: è il modo più leggero,
 2. togli la spunta *Avvia all'accesso al computer* dal menu dell'icona;
 3. cancella la cartella del repository;
 4. se vuoi, cancella anche:
-   - impostazioni e statistiche: `~/.agent-office`;
-   - preferenze della finestra: `%APPDATA%\Agent Office`, `~/Library/Application Support/Agent Office` oppure `~/.config/Agent Office`;
+   - impostazioni e statistiche: `~/.platypus`;
+   - preferenze della finestra: `%APPDATA%\Platypus`, `~/Library/Application Support/Platypus` oppure `~/.config/Platypus`;
    - i collegamenti creati con `npm run shortcut`.
 
 ## Casi particolari
 
 ### WSL (Claude Code dentro Linux su Windows)
 
-Se lanci Claude Code dentro WSL, i suoi transcript stanno nella distribuzione Linux, non in `%USERPROFILE%\.claude`. Agent Office per Windows segue da solo le distribuzioni WSL **accese** (`\\wsl.localhost\<distribuzione>\home\<utente>\.claude`). Gli hook installati dentro WSL però non raggiungono `127.0.0.1` di Windows, a meno di attivare la [rete in modalità mirrored](https://learn.microsoft.com/windows/wsl/networking#mirrored-mode-networking). Senza, l'ufficio funziona leggendo i transcript.
+Se lanci Claude Code dentro WSL, i suoi transcript stanno nella distribuzione Linux, non in `%USERPROFILE%\.claude`. Platypus per Windows segue da solo le distribuzioni WSL **accese** (`\\wsl.localhost\<distribuzione>\home\<utente>\.claude`). Gli hook installati dentro WSL però non raggiungono `127.0.0.1` di Windows, a meno di attivare la [rete in modalità mirrored](https://learn.microsoft.com/windows/wsl/networking#mirrored-mode-networking). Senza, l'ufficio funziona leggendo i transcript.
 
-In alternativa puoi avviare Agent Office direttamente dentro WSL (`./start.sh`): con WSLg la finestra compare su Windows.
+In alternativa puoi avviare Platypus direttamente dentro WSL (`./start.sh`): con WSLg la finestra compare su Windows.
 
 ### Più cartelle `.claude`
 
-In **OPZ → Altre cartelle di Claude Code** (o con la variabile `AGENT_OFFICE_CLAUDE_DIRS`, separate da `;`) puoi aggiungere altre configurazioni da seguire, per esempio un secondo utente o una cartella condivisa.
+In **OPZ → Altre cartelle di Claude Code** (o con la variabile `PLATYPUS_CLAUDE_DIRS`, separate da `;`) puoi aggiungere altre configurazioni da seguire, per esempio un secondo utente o una cartella condivisa.
 
 ### Cowork
 
@@ -168,7 +168,7 @@ Se GitHub è bloccato, Electron si può scaricare da un mirror interno: `ELECTRO
 
 ### Repository privato
 
-Se il repository è privato, git chiede di autenticarti. Il modo più semplice è [GitHub CLI](https://cli.github.com): `gh auth login`, poi `gh repo clone <proprietario>/agent-office`. In alternativa usa una chiave SSH o un token personale.
+Se il repository è privato, git chiede di autenticarti. Il modo più semplice è [GitHub CLI](https://cli.github.com): `gh auth login`, poi `gh repo clone <proprietario>/platypus`. In alternativa usa una chiave SSH o un token personale.
 
 ## Problemi frequenti
 
@@ -176,11 +176,11 @@ Se il repository è privato, git chiede di autenticarti. Il modo più semplice �
 |---|---|
 | `node` non trovato | Installa Node.js e riapri il terminale. Su macOS con nvm: `start.sh` carica nvm da solo; se usi un altro gestore, assicurati che `node` sia nel PATH. |
 | Il primo avvio si ferma durante `npm ci` | Rete o proxy: vedi [Proxy aziendale](#proxy-aziendale). Intanto puoi usare `npm run web`. |
-| Linux: "The SUID sandbox helper binary was found, but is not configured correctly" | Su alcune distribuzioni (es. Ubuntu 24.04) la sandbox di Electron scaricato da npm è bloccata. Il lanciatore riparte da solo con `--no-sandbox`; per farlo sempre: `AGENT_OFFICE_NO_SANDBOX=1 ./start.sh`. |
+| Linux: "The SUID sandbox helper binary was found, but is not configured correctly" | Su alcune distribuzioni (es. Ubuntu 24.04) la sandbox di Electron scaricato da npm è bloccata. Il lanciatore riparte da solo con `--no-sandbox`; per farlo sempre: `PLATYPUS_NO_SANDBOX=1 ./start.sh`. |
 | Linux: niente icona nella barra | GNOME ha bisogno dell'estensione *AppIndicator and KStatusNotifierItem Support*. La finestra funziona comunque. |
 | Linux: "VAI ALLA FINESTRA" non fa nulla | Su X11 installa `xdotool` o `wmctrl`. Su Wayland non è possibile portare in primo piano la finestra di un altro programma. |
-| "La porta 47800 è già occupata" | Agent Office è già aperto (anche in modalità browser), oppure un altro programma usa la porta: `AGENT_OFFICE_PORT=47810 npm start` e reinstalla gli hook. |
+| "La porta 47800 è già occupata" | Platypus è già aperto (anche in modalità browser), oppure un altro programma usa la porta: `PLATYPUS_PORT=47810 npm start` e reinstalla gli hook. |
 | Windows: niente notifiche | Avvia l'app almeno una volta dal lanciatore, così crea la voce nel menu Start (Windows mostra le notifiche solo per le app che ne hanno una), e controlla *Impostazioni → Sistema → Notifiche*. |
 | Non vedo le mie sessioni | Controlla che Claude Code scriva in `~/.claude` (o nella cartella di `CLAUDE_CONFIG_DIR`). Le sessioni vengono mostrate se attive negli ultimi 25 minuti; le altre sono nell'archivio (tasto `A`). |
 
-I messaggi della finestra desktop finiscono in `~/.agent-office/launch.log`.
+I messaggi della finestra desktop finiscono in `~/.platypus/launch.log`.

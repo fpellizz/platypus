@@ -1,7 +1,7 @@
 # Contribuire
 
 ```sh
-git clone <indirizzo-del-repository> && cd agent-office
+git clone <indirizzo-del-repository> && cd platypus
 npm test             # prove veloci, non servono dipendenze
 npm run start:demo   # finestra con la demo (al primo avvio installa Electron)
 npm run web:demo     # lo stesso nel browser

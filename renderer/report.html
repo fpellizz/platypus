@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Report giornaliero · Agent Office</title>
+<title>Report giornaliero · Platypus</title>
 <link rel="icon" href="favicon.png">
 <style>
   @font-face { font-family: 'PS2P'; src: url('fonts/PressStart2P.woff2') format('woff2'); }
@@ -79,7 +79,7 @@ function honorBox(title, r, what) { return `<div class="honor"><h3>${esc(title)}
 function text() {
   if (!data) return '';
   const t = data.totals;
-  const lines = [tr('Report Agent Office del {day}', { day: data.day }), '',
+  const lines = [tr('Report Platypus del {day}', { day: data.day }), '',
     tr('Costo: {cost} · Token: {tokens} · Sessioni: {sessions} · Sottoagenti conclusi: {completed}', { cost: money(t.cost), tokens: tok(t.tokens), sessions: t.sessions, completed: t.completed }),
     tr('Commit: {commits} · PR: {prs} · Avvisi: {alerts}', { commits: t.commits, prs: t.prs, alerts: t.alerts }), '', tr('Per progetto:')];
   for (const p of data.projects) lines.push('- ' + tr('{name}: {cost}, {completed} sottoagenti, {commits} commit, {prs} PR', { name: p.name, cost: money(p.cost), completed: p.completed, commits: p.commits, prs: p.prs }));
@@ -121,7 +121,7 @@ $('#next').onclick = () => load(shift($('#day').value, 1));
 $('#day').onchange = () => load($('#day').value);
 $('#print').onclick = () => window.print();
 $('#copy').onclick = async () => { try { await navigator.clipboard.writeText(text()); $('#copy').textContent = tr('COPIATO!'); setTimeout(() => { $('#copy').textContent = tr('COPIA TESTO'); }, 1500); } catch {} };
-$('#mail').onclick = () => { location.href = 'mailto:?subject=' + encodeURIComponent(tr('Report Agent Office {day}', { day: data.day })) + '&body=' + encodeURIComponent(text().slice(0, 1800)); };
+$('#mail').onclick = () => { location.href = 'mailto:?subject=' + encodeURIComponent(tr('Report Platypus {day}', { day: data.day })) + '&body=' + encodeURIComponent(text().slice(0, 1800)); };
 load(new URLSearchParams(location.search).get('day') || today());
 </script>
 </body>

@@ -1,5 +1,5 @@
 'use strict';
-// Traduzioni di Agent Office.
+// Traduzioni di Platypus.
 // L'italiano è la lingua di partenza: la chiave di ogni testo è il testo italiano stesso
 // (come in gettext). Le altre lingue stanno in locales/<lingua>/*.json come { "testo italiano": "traduzione" }.
 // Segnaposto: {nome}. Plurali: trn('{n} agente', '{n} agenti', n). Nel codice si usano tr()/trn()

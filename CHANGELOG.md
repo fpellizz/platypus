@@ -1,6 +1,15 @@
 # Novità
 
-Le versioni di Agent Office, dalla più recente.
+Le versioni di Platypus (fino alla 2.7 si chiamava Agent Office), dalla più recente.
+
+## 2.8: si chiama Platypus
+
+- **Nuovo nome**: Agent Office diventa **Platypus**, nell'app, nei menu, nei collegamenti e nei documenti.
+- **Si passa senza perdere nulla**:
+  - opzioni e statistiche vengono copiate una volta da `~/.agent-office` in `~/.platypus`, come le preferenze della finestra;
+  - gli hook già installati in Claude Code vengono riconosciuti e aggiornati al nuovo indirizzo da soli;
+  - le variabili `AGENT_OFFICE_*` valgono ancora come `PLATYPUS_*`;
+  - il vecchio collegamento nel menu Start e le vecchie voci di avvio all'accesso vengono tolti.
 
 ## 2.7: ovunque, dai sorgenti
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Agent Office: doppio clic nel Finder per avviare (macOS)
+# Platypus: doppio clic nel Finder per avviare (macOS)
 cd "$(dirname "$0")" || exit 1
 ./start.sh --background "$@"
 status=$?

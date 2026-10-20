@@ -1,5 +1,5 @@
 'use strict';
-// Agent Office — finestra desktop (Electron) + icona nella barra di sistema.
+// Platypus — finestra desktop (Electron) + icona nella barra di sistema.
 
 const { app, BrowserWindow, Tray, Menu, ipcMain, shell, dialog, nativeImage, Notification, net } = require('electron');
 const path = require('path');
@@ -9,7 +9,7 @@ const autostart = require('./autostart');
 const { tr, trn, money } = require('./i18n');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
-app.setAppUserModelId('com.agentoffice.desktop');
+app.setAppUserModelId('com.platypus.desktop');
 
 const ROOT = path.join(__dirname, '..');
 let win = null, tray = null, core = null, quitting = false;
@@ -18,7 +18,12 @@ let counts = { sessions: 0, agents: 0, busy: 0, waiting: 0 };
 // ---------------------------------------------------------------- configurazione
 const cfgFile = () => path.join(app.getPath('userData'), 'config.json');
 let cfg = { pin: true, bounds: null, askedHooks: false, showCowork: true, notify: true };
-function loadCfg() { try { cfg = { ...cfg, ...JSON.parse(fs.readFileSync(cfgFile(), 'utf8')) }; } catch {} }
+function loadCfg() {
+  // preferenze della finestra salvate quando l'app si chiamava Agent Office
+  let file = cfgFile();
+  if (!fs.existsSync(file)) { const old = path.join(app.getPath('appData'), 'Agent Office', 'config.json'); if (fs.existsSync(old)) file = old; }
+  try { cfg = { ...cfg, ...JSON.parse(fs.readFileSync(file, 'utf8')) }; } catch {}
+}
 let saveTimer = null;
 function saveCfg() {
   clearTimeout(saveTimer);
@@ -36,7 +41,7 @@ function createWindow() {
     frame: false,
     backgroundColor: '#0b0a12',
     alwaysOnTop: !!cfg.pin,
-    title: 'Agent Office',
+    title: 'Platypus',
     icon: path.join(ROOT, 'build', 'icon.png'),
     show: false,
     webPreferences: {
@@ -109,7 +114,7 @@ function checkReport() {
   if (cfg.notify === false || !Notification.isSupported()) return;
   let r = null;
   try { r = core.stats.report(); } catch {}
-  if (!r || (!r.projects.length && !process.env.AGENT_OFFICE_NOTIFY_TEST)) return; // giornata vuota: niente avviso
+  if (!r || (!r.projects.length && !process.env.PLATYPUS_NOTIFY_TEST)) return; // giornata vuota: niente avviso
   const t = r.totals;
   const n = new Notification({
     title: tr('Report della giornata pronto'),
@@ -127,18 +132,18 @@ function installHooks() {
   try {
     const r = core.hooks.install();
     dialog.showMessageBox({
-      type: 'info', title: 'Agent Office',
+      type: 'info', title: 'Platypus',
       message: tr('Collegato a Claude Code'),
       detail: tr('Ho aggiunto gli hook in:\n{path}', { path: r.path }) + '\n\n' + (r.backup ? tr('Copia di sicurezza delle impostazioni precedenti:\n{path}', { path: r.backup }) + '\n\n' : '') +
         tr('Valgono per le sessioni di Claude Code aperte da adesso in poi: chiudi e riapri quelle già aperte.'),
     });
   } catch (e) {
-    dialog.showErrorBox('Agent Office', tr('Non sono riuscito a modificare le impostazioni di Claude Code:\n{error}', { error: e.message }));
+    dialog.showErrorBox('Platypus', tr('Non sono riuscito a modificare le impostazioni di Claude Code:\n{error}', { error: e.message }));
   }
   buildTrayMenu();
 }
 function uninstallHooks() {
-  try { core.hooks.uninstall(); } catch (e) { dialog.showErrorBox('Agent Office', e.message); }
+  try { core.hooks.uninstall(); } catch (e) { dialog.showErrorBox('Platypus', e.message); }
   buildTrayMenu();
 }
 
@@ -146,9 +151,9 @@ async function askHooksOnce() {
   if (cfg.askedHooks || core.hooks.status()) return;
   cfg.askedHooks = true; saveCfg();
   const r = await dialog.showMessageBox(win, {
-    type: 'question', title: 'Agent Office',
+    type: 'question', title: 'Platypus',
     buttons: [tr('Collega'), tr('Più tardi')], defaultId: 0, cancelId: 1,
-    message: tr('Collegare Agent Office a Claude Code?'),
+    message: tr('Collegare Platypus a Claude Code?'),
     detail: tr('L\'ufficio funziona già leggendo i file locali di Claude Code.') + '\n\n' +
       tr('Se lo colleghi (aggiungo degli hook in ~/.claude/settings.json) vedi anche in tempo reale quando un agente aspetta il tuo permesso, e puoi rispondere dai fumetti. Puoi scollegarlo quando vuoi dal menu dell\'icona.'),
   });
@@ -186,7 +191,7 @@ function buildTrayMenu() {
     { label: tr('Esci'), click: () => { quitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(menu);
-  tray.setToolTip('Agent Office — ' + trn('{n} agente', '{n} agenti', counts.agents) + ', ' + trn('{n} al lavoro', '{n} al lavoro', counts.busy) + (counts.waiting ? ', ' + trn('{n} ti aspetta', '{n} ti aspettano', counts.waiting) : ''));
+  tray.setToolTip('Platypus — ' + trn('{n} agente', '{n} agenti', counts.agents) + ', ' + trn('{n} al lavoro', '{n} al lavoro', counts.busy) + (counts.waiting ? ', ' + trn('{n} ti aspetta', '{n} ti aspettano', counts.waiting) : ''));
 }
 
 function createTray() {
@@ -219,9 +224,9 @@ function checkWaiting() {
   for (const k of [...notified]) if (!current.has(k)) notified.delete(k);
   // all'avvio non notifichiamo le attese già in corso: le vedi aprendo la finestra
   if (!notifyPrimed) { notifyPrimed = true; return; }
-  if (process.env.AGENT_OFFICE_DEBUG && fresh.length) console.log('[notify] nuove attese:', fresh.length, 'supportate:', Notification.isSupported(), 'finestra attiva:', !!(win && win.isFocused()));
+  if (process.env.PLATYPUS_DEBUG && fresh.length) console.log('[notify] nuove attese:', fresh.length, 'supportate:', Notification.isSupported(), 'finestra attiva:', !!(win && win.isFocused()));
   if (!fresh.length || cfg.notify === false || !Notification.isSupported()) return;
-  if (win && win.isVisible() && win.isFocused() && !process.env.AGENT_OFFICE_NOTIFY_TEST) return;
+  if (win && win.isVisible() && win.isFocused() && !process.env.PLATYPUS_NOTIFY_TEST) return;
   const first = fresh[0];
   const title = fresh.length === 1
     ? tr('{agent} chiede il tuo permesso', { agent: agentLabel(first.a) })
@@ -234,7 +239,7 @@ function checkWaiting() {
   n.on('close', () => { activeToasts = activeToasts.filter(x => x !== n); });
   activeToasts.push(n); // tiene vivo l'oggetto finché la notifica è visibile
   n.show();
-  if (process.env.AGENT_OFFICE_DEBUG) console.log('[notify] mostrata:', title, '|', body.replace(/\n/g, ' / '));
+  if (process.env.PLATYPUS_DEBUG) console.log('[notify] mostrata:', title, '|', body.replace(/\n/g, ' / '));
 }
 // avvisi intelligenti (agente fermo, errori di fila, budget, sessione che ti aspetta)
 const alertSeen = new Set();
@@ -254,7 +259,7 @@ function checkAlerts() {
   for (const k of [...alertSeen]) if (!current.has(k)) alertSeen.delete(k);
   if (!alertsPrimed) { alertsPrimed = true; return; }
   if (!fresh.length || snap.settings.alertsNotify === false || cfg.notify === false || !Notification.isSupported()) return;
-  if (win && win.isVisible() && win.isFocused() && !process.env.AGENT_OFFICE_NOTIFY_TEST) return;
+  if (win && win.isVisible() && win.isFocused() && !process.env.PLATYPUS_NOTIFY_TEST) return;
   const first = fresh[0];
   const n = new Notification({
     title: fresh.length === 1 ? tr('Avviso · piano {n}', { n: first.floor }) + ' ' + sessionLabel(first.s) : tr('{n} nuovi avvisi', { n: fresh.length }),
@@ -265,7 +270,7 @@ function checkAlerts() {
   n.on('close', () => { activeToasts = activeToasts.filter(x => x !== n); });
   activeToasts.push(n);
   n.show();
-  if (process.env.AGENT_OFFICE_DEBUG) console.log('[notify] avviso:', fresh.map(f => f.al.text).join(' / '));
+  if (process.env.PLATYPUS_DEBUG) console.log('[notify] avviso:', fresh.map(f => f.al.text).join(' / '));
 }
 
 let waitTimer = null;
@@ -279,11 +284,13 @@ function scheduleWaitCheck() {
 function ensureStartMenuShortcut() {
   if (process.platform !== 'win32') return;
   try {
-    const lnk = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Agent Office.lnk');
+    const programs = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs');
+    const lnk = path.join(programs, 'Platypus.lnk');
+    try { fs.rmSync(path.join(programs, 'Agent Office.lnk'), { force: true }); } catch {} // il vecchio nome
     // dai sorgenti: Electron con la cartella del repository come argomento, e la nostra icona
     const opts = app.isPackaged
-      ? { target: process.execPath, appUserModelId: 'com.agentoffice.desktop', description: 'Agent Office', icon: process.execPath, iconIndex: 0 }
-      : { target: process.execPath, args: `"${ROOT}"`, cwd: ROOT, appUserModelId: 'com.agentoffice.desktop', description: 'Agent Office', icon: path.join(ROOT, 'build', 'icon.ico'), iconIndex: 0 };
+      ? { target: process.execPath, appUserModelId: 'com.platypus.desktop', description: 'Platypus', icon: process.execPath, iconIndex: 0 }
+      : { target: process.execPath, args: `"${ROOT}"`, cwd: ROOT, appUserModelId: 'com.platypus.desktop', description: 'Platypus', icon: path.join(ROOT, 'build', 'icon.ico'), iconIndex: 0 };
     shell.writeShortcutLink(lnk, fs.existsSync(lnk) ? 'update' : 'create', opts);
   } catch {}
 }
@@ -312,7 +319,7 @@ app.on('before-quit', () => { quitting = true; if (core) core.stop(); });
 // macOS: menu dell'app con le scorciatoie standard (Cmd+C/V/Q...) e icona nel Dock anche dai sorgenti
 function setupMac() {
   if (process.platform !== 'darwin') return;
-  Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu', label: 'Agent Office' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]));
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu', label: 'Platypus' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]));
   try { if (!app.isPackaged && app.dock) app.dock.setIcon(path.join(ROOT, 'build', 'icon.png')); } catch {}
 }
 
@@ -323,8 +330,8 @@ app.whenReady().then(async () => {
   try {
     await core.ready;
   } catch (e) {
-    dialog.showErrorBox('Agent Office', e.code === 'EADDRINUSE'
-      ? tr('La porta {port} è già occupata. Agent Office è forse già aperto (anche in modalità browser)?', { port: core.port })
+    dialog.showErrorBox('Platypus', e.code === 'EADDRINUSE'
+      ? tr('La porta {port} è già occupata. Platypus è forse già aperto (anche in modalità browser)?', { port: core.port })
       : tr('Errore di avvio: {error}', { error: e.message }));
     app.quit();
     return;
@@ -336,14 +343,14 @@ app.whenReady().then(async () => {
   createWindow();
   createTray();
   setInterval(() => { try { checkReport(); } catch {} }, 60000);
-  if (process.env.AGENT_OFFICE_SNAPSHOT) { // solo per test automatici
+  if (process.env.PLATYPUS_SNAPSHOT) { // solo per test automatici
     setTimeout(async () => {
-      if (process.env.AGENT_OFFICE_SNAPSHOT_JS) { await win.webContents.executeJavaScript(process.env.AGENT_OFFICE_SNAPSHOT_JS); await new Promise(r => setTimeout(r, 1500)); }
-      if (process.env.AGENT_OFFICE_DEBUG) console.log('[snapshot] bounds', JSON.stringify(win.getBounds()), 'onTop', win.isAlwaysOnTop());
+      if (process.env.PLATYPUS_SNAPSHOT_JS) { await win.webContents.executeJavaScript(process.env.PLATYPUS_SNAPSHOT_JS); await new Promise(r => setTimeout(r, 1500)); }
+      if (process.env.PLATYPUS_DEBUG) console.log('[snapshot] bounds', JSON.stringify(win.getBounds()), 'onTop', win.isAlwaysOnTop());
       const img = await win.webContents.capturePage();
-      fs.writeFileSync(process.env.AGENT_OFFICE_SNAPSHOT, img.toPNG());
+      fs.writeFileSync(process.env.PLATYPUS_SNAPSHOT, img.toPNG());
       app.quit();
-    }, Number(process.env.AGENT_OFFICE_SNAPSHOT_DELAY) || 8000);
+    }, Number(process.env.PLATYPUS_SNAPSHOT_DELAY) || 8000);
     return;
   }
   setTimeout(askHooksOnce, 1500);

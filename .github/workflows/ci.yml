@@ -47,16 +47,16 @@ jobs:
       - name: Avvia la finestra con la demo e fai uno screenshot
         shell: bash
         env:
-          AGENT_OFFICE_SNAPSHOT: ${{ github.workspace }}/snapshot-${{ runner.os }}.png
-          AGENT_OFFICE_SNAPSHOT_DELAY: '12000'
-          AGENT_OFFICE_PORT: '47811'
+          PLATYPUS_SNAPSHOT: ${{ github.workspace }}/snapshot-${{ runner.os }}.png
+          PLATYPUS_SNAPSHOT_DELAY: '12000'
+          PLATYPUS_PORT: '47811'
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
             timeout 120 xvfb-run -a npx electron . --demo --no-sandbox
           else
             npx electron . --demo
           fi
-          test -s "$AGENT_OFFICE_SNAPSHOT"
+          test -s "$PLATYPUS_SNAPSHOT"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

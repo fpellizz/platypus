@@ -1,6 +1,6 @@
 # Architettura
 
-Agent Office è diviso in tre strati indipendenti. È quello che permette di farlo girare uguale su Windows, macOS e Linux, e un domani di cambiare il guscio (per esempio con Tauri) senza rifare né il motore né la grafica.
+Platypus è diviso in tre strati indipendenti. È quello che permette di farlo girare uguale su Windows, macOS e Linux, e un domani di cambiare il guscio (per esempio con Tauri) senza rifare né il motore né la grafica.
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -43,8 +43,8 @@ Tutto ciò che dipende dal sistema operativo sta in tre punti: `osint.js`, `sour
 | `GET /events` | stream SSE dello stato (e dei fotogrammi del replay) |
 | `GET /api/state`, `/api/settings` | stato e opzioni |
 | `POST /api/settings` | salva le opzioni |
-| `POST /agent-office-hook` | eventi degli hook (asincroni) |
-| `POST /agent-office-hook/permission` | hook sincrono dei permessi: resta in attesa della risposta dall'ufficio |
+| `POST /platypus-hook` | eventi degli hook (asincroni) |
+| `POST /platypus-hook/permission` | hook sincrono dei permessi: resta in attesa della risposta dall'ufficio |
 | `POST /api/approve` | risposta a un permesso: `allow`, `always`, `deny` |
 | `GET /api/agentmap`, `/api/agentmind` | mappa della realtà, bolla e stella polare |
 | `GET /api/archive`, `POST /api/replay` | archivio e replay |
@@ -97,7 +97,7 @@ Il vantaggio sarebbero programmi compilati molto più piccoli (circa 10 MB invec
 | Percorso | Contenuto |
 |---|---|
 | `~/.claude/` | di Claude Code: letto, mai modificato, tranne gli hook in `settings.json` se li installi |
-| `~/.agent-office/settings.json` | opzioni dell'ufficio |
-| `~/.agent-office/stats.json` | statistiche per giorno e settimana |
-| `~/.agent-office/launch.log` | messaggi dell'ultimo avvio della finestra |
-| cartella dati di Electron (`Agent Office`) | posizione della finestra e preferenze del guscio |
+| `~/.platypus/settings.json` | opzioni dell'ufficio |
+| `~/.platypus/stats.json` | statistiche per giorno e settimana |
+| `~/.platypus/launch.log` | messaggi dell'ultimo avvio della finestra |
+| cartella dati di Electron (`Platypus`) | posizione della finestra e preferenze del guscio |

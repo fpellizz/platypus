@@ -30,7 +30,7 @@ body { font-family: 'VT', monospace; display: flex; flex-direction: column; user
 }
 #titlebar button, #titlebar .win { -webkit-app-region: no-drag; }
 .logo .a { color: var(--pink); text-shadow: 0 0 6px rgba(255,119,168,.6); }
-.logo .b { color: var(--blue); margin-left: 6px; text-shadow: 0 0 6px rgba(41,173,255,.6); }
+.logo .b { color: var(--blue); margin-left: 0; text-shadow: 0 0 6px rgba(41,173,255,.6); }
 #stats { flex: 1; text-align: center; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
 #stats b { color: var(--yellow); font-weight: normal; }
 #stats .live { color: var(--green); }
@@ -267,7 +267,7 @@ body.tiny .balloon .task { display: none; }
 body.tiny .balloon { padding: 2px 4px 3px; }
 body.tiny .podlabel small { display: none; }
 @media (max-width: 1100px) {
-  .logo .b, #hookstate, #btn-help, #btn-crt { display: none; }
+  #hookstate, #btn-help, #btn-crt { display: none; }
 }
 @media (max-width: 760px) {
   #elevator { flex-basis: 54px; padding: 4px; }
@@ -453,7 +453,7 @@ body.tiny .podlabel small { display: none; }
 
 /* ---------- modalità mini ---------- */
 #widget { display: none; }
-body.widget #middle, body.widget #ticker, body.widget #stats, body.widget .logo .b, body.widget #hookstate,
+body.widget #middle, body.widget #ticker, body.widget #stats, body.widget #hookstate,
 body.widget #titlebar .right > button { display: none !important; }
 body.widget #widget { display: block; flex: 1; padding: 6px 8px; overflow: hidden; background: #0b0a12; }
 #widget .top { display: flex; gap: 10px; align-items: center; font-family: 'PS2P'; font-size: 8px; color: var(--dim); margin-bottom: 5px; flex-wrap: wrap; }

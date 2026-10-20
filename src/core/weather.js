@@ -39,7 +39,7 @@ class Weather {
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), 8000);
     try {
-      const r = await this.fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'AgentOffice' } });
+      const r = await this.fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Platypus' } });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return await r.json();
     } finally { clearTimeout(to); }

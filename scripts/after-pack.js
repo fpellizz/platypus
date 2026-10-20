@@ -26,11 +26,11 @@ exports.default = async function afterPack(ctx) {
   vi.setFileVersion(a, b, c, 0, 1033);
   vi.setProductVersion(a, b, c, 0, 1033);
   vi.setStringValues(lang, {
-    FileDescription: 'Agent Office',
-    ProductName: 'Agent Office',
-    CompanyName: 'Agent Office',
+    FileDescription: 'Platypus',
+    ProductName: 'Platypus',
+    CompanyName: 'Platypus',
     OriginalFilename: path.basename(exePath),
-    InternalName: 'Agent Office',
+    InternalName: 'Platypus',
     LegalCopyright: '',
     FileVersion: version,
     ProductVersion: version,

@@ -9,10 +9,15 @@ const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const LABEL = 'com.agentoffice.desktop';
+const LABEL = 'com.platypus.desktop';
 
+// voci create quando l'app si chiamava Agent Office: le togliamo quando cambi l'impostazione
+const LEGACY = [
+  path.join(os.homedir(), 'Library', 'LaunchAgents', 'com.agentoffice.desktop.plist'),
+  path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'autostart', 'agent-office.desktop'),
+];
 function plistPath() { return path.join(os.homedir(), 'Library', 'LaunchAgents', LABEL + '.plist'); }
-function desktopPath() { return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'autostart', 'agent-office.desktop'); }
+function desktopPath() { return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'autostart', 'platypus.desktop'); }
 function xml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 function launchArgs(app) {
@@ -28,6 +33,7 @@ function isEnabled(app) {
 }
 
 function setEnabled(app, on) {
+  for (const f of LEGACY) { try { fs.rmSync(f, { force: true }); } catch {} }
   try {
     if (process.platform === 'win32') {
       app.setLoginItemSettings({ openAtLogin: !!on, path: process.execPath, args: launchArgs(app) });
@@ -47,7 +53,7 @@ function setEnabled(app, on) {
     } else if (on) {
       fs.mkdirSync(path.dirname(desktopPath()), { recursive: true });
       const exec = [process.execPath, ...launchArgs(app)].map(a => JSON.stringify(a)).join(' ');
-      fs.writeFileSync(desktopPath(), `[Desktop Entry]\nType=Application\nName=Agent Office\nExec=${exec}\nIcon=${path.join(ROOT, 'build', 'icon.png')}\nX-GNOME-Autostart-enabled=true\nTerminal=false\n`);
+      fs.writeFileSync(desktopPath(), `[Desktop Entry]\nType=Application\nName=Platypus\nExec=${exec}\nIcon=${path.join(ROOT, 'build', 'icon.png')}\nX-GNOME-Autostart-enabled=true\nTerminal=false\n`);
     } else fs.rmSync(desktopPath(), { force: true });
   } catch { /* nessun permesso: resta com'era */ }
   return isEnabled(app);

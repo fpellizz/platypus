@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Agent Office: avvio da terminale (Linux e macOS) · start from a terminal
+# Platypus: avvio da terminale (Linux e macOS) · start from a terminal
 cd "$(dirname "$0")" || exit 1
 # Node installato con Homebrew, nvm o Volta non sempre è nel PATH delle app grafiche
 PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.volta/bin:$PATH"; export PATH

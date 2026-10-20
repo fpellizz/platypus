@@ -1,5 +1,5 @@
 'use strict';
-// Statistiche che restano nel tempo (~/.agent-office/stats.json):
+// Statistiche che restano nel tempo (~/.platypus/stats.json):
 // costi, token e lavoro per giorno e per progetto, premi della settimana per tipo di agente,
 // rilasci e avvisi. Servono al grafico dei costi, al report giornaliero e al dipendente del mese.
 
@@ -21,7 +21,7 @@ function weekKey(t) { // settimana ISO, es. 2026-W43
 }
 
 class Stats {
-  constructor(state, file = path.join(os.homedir(), '.agent-office', 'stats.json')) {
+  constructor(state, file = path.join(require('../paths').dataDir(), 'stats.json')) {
     this.state = state;
     this.file = file;
     this.data = { days: {}, weeks: {}, last: {} };

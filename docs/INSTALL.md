@@ -1,6 +1,6 @@
-# Installing Agent Office
+# Installing Platypus
 
-Agent Office runs straight from source: clone the repository and launch it. There are no installers and no prebuilt binaries to sign. The desktop window is [Electron](https://www.electronjs.org), which npm downloads, ready-made for your system, on first launch.
+Platypus runs straight from source: clone the repository and launch it. There are no installers and no prebuilt binaries to sign. The desktop window is [Electron](https://www.electronjs.org), which npm downloads, ready-made for your system, on first launch.
 
 *Versione italiana: [INSTALLAZIONE.md](INSTALLAZIONE.md).*
 
@@ -20,8 +20,8 @@ Agent Office runs straight from source: clone the repository and launch it. Ther
 winget install OpenJS.NodeJS.LTS
 winget install Git.Git
 # reopen the terminal, then:
-git clone <repository-url> $HOME\agent-office
-cd $HOME\agent-office
+git clone <repository-url> $HOME\platypus
+cd $HOME\platypus
 ```
 
 Double-click **`start.cmd`** (or run `npm start`). `npm run shortcut` adds a Desktop icon. The app creates its own Start menu entry on first launch, which Windows also needs to show notifications.
@@ -30,11 +30,11 @@ Double-click **`start.cmd`** (or run `npm start`). `npm run shortcut` adds a Des
 
 ```sh
 brew install node git
-git clone <repository-url> ~/agent-office
-cd ~/agent-office
+git clone <repository-url> ~/platypus
+cd ~/platypus
 ```
 
-Double-click **`start.command`** in Finder (or run `./start.sh`). `npm run shortcut` creates **Agent Office.app** in `~/Applications`. When running from source, the Dock and notifications may show "Electron": that's the runtime, and it's expected.
+Double-click **`start.command`** in Finder (or run `./start.sh`). `npm run shortcut` creates **Platypus.app** in `~/Applications`. When running from source, the Dock and notifications may show "Electron": that's the runtime, and it's expected.
 
 ## Linux
 
@@ -42,12 +42,12 @@ Double-click **`start.command`** in Finder (or run `./start.sh`). `npm run short
 # Node.js via nvm (distribution packages are often too old)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 nvm install --lts
-git clone <repository-url> ~/agent-office
-cd ~/agent-office
+git clone <repository-url> ~/platypus
+cd ~/platypus
 ./start.sh
 ```
 
-`npm run shortcut` adds Agent Office to the applications menu. If Electron's libraries are missing (Debian/Ubuntu):
+`npm run shortcut` adds Platypus to the applications menu. If Electron's libraries are missing (Debian/Ubuntu):
 
 ```sh
 sudo apt install libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libnotify4
@@ -71,7 +71,7 @@ npm run hooks:install     # or: tray menu → Connect to Claude Code
 npm run hooks:uninstall
 ```
 
-The hooks are `curl` commands to `127.0.0.1:47800`, added to `~/.claude/settings.json`. Your settings stay intact, and a backup is saved in `settings.json.agent-office-backup`. Without hooks the office still works from the transcripts, with a few seconds of delay and without answering permissions from the balloons.
+The hooks are `curl` commands to `127.0.0.1:47800`, added to `~/.claude/settings.json`. Your settings stay intact, and a backup is saved in `settings.json.platypus-backup`. Without hooks the office still works from the transcripts, with a few seconds of delay and without answering permissions from the balloons.
 
 ## Browser mode
 
@@ -91,16 +91,16 @@ To uninstall:
 2. Untick *Start when I log in* in the tray menu.
 3. Delete the repository folder.
 4. Optionally, also delete:
-   - `~/.agent-office`, the settings and stats;
-   - the window preferences folder `Agent Office` under AppData (Windows), Application Support (macOS) or `~/.config` (Linux).
+   - `~/.platypus`, the settings and stats;
+   - the window preferences folder `Platypus` under AppData (Windows), Application Support (macOS) or `~/.config` (Linux).
 
 ## Special cases
 
-- **WSL**: on Windows the office also follows Claude Code inside *running* WSL distributions. Hooks inside WSL can't reach Windows' `127.0.0.1` unless WSL mirrored networking is on; without it, the office works from the transcripts. You can also run Agent Office inside WSL (`./start.sh`, with WSLg).
-- **More `.claude` folders**: OPT → *Other Claude Code folders*, or the `AGENT_OFFICE_CLAUDE_DIRS` variable (separated by `;`).
+- **WSL**: on Windows the office also follows Claude Code inside *running* WSL distributions. Hooks inside WSL can't reach Windows' `127.0.0.1` unless WSL mirrored networking is on; without it, the office works from the transcripts. You can also run Platypus inside WSL (`./start.sh`, with WSLg).
+- **More `.claude` folders**: OPT → *Other Claude Code folders*, or the `PLATYPUS_CLAUDE_DIRS` variable (separated by `;`).
 - **Cowork**: desktop-app Cowork sessions are found in the Claude app folder. Cloud Cowork sessions (from phone or web) leave no files on your computer and can't be shown.
 - **Corporate proxy**: `npm config set proxy …` / `https-proxy …`, or `ELECTRON_MIRROR=<internal mirror> npm ci`. Browser mode downloads nothing.
-- **Private repository**: `gh auth login`, then `gh repo clone <owner>/agent-office`, or use SSH keys.
+- **Private repository**: `gh auth login`, then `gh repo clone <owner>/platypus`, or use SSH keys.
 
 ## Troubleshooting
 
@@ -108,10 +108,10 @@ To uninstall:
 |---|---|
 | `node` not found | Install Node.js and reopen the terminal (`start.sh` loads nvm by itself). |
 | `npm ci` hangs on first launch | Network or proxy (see above). Meanwhile, use `npm run web`. |
-| Linux: "SUID sandbox helper binary … not configured correctly" | Some distributions (e.g. Ubuntu 24.04) block Electron's sandbox. The launcher retries with `--no-sandbox` automatically. To always use it: `AGENT_OFFICE_NO_SANDBOX=1 ./start.sh`. |
+| Linux: "SUID sandbox helper binary … not configured correctly" | Some distributions (e.g. Ubuntu 24.04) block Electron's sandbox. The launcher retries with `--no-sandbox` automatically. To always use it: `PLATYPUS_NO_SANDBOX=1 ./start.sh`. |
 | Linux: no tray icon | GNOME needs the *AppIndicator and KStatusNotifierItem Support* extension. |
 | Linux: "GO TO WINDOW" does nothing | On X11, install `xdotool` or `wmctrl`. On Wayland, apps can't raise other apps' windows. |
-| "Port 47800 is already in use" | The office is already open, or another app uses the port. Run `AGENT_OFFICE_PORT=47810 npm start`, then reinstall the hooks. |
+| "Port 47800 is already in use" | The office is already open, or another app uses the port. Run `PLATYPUS_PORT=47810 npm start`, then reinstall the hooks. |
 | Windows: no notifications | Launch once so the Start menu entry exists, and check *Settings → System → Notifications*. |
 
-Desktop window messages are logged to `~/.agent-office/launch.log`.
+Desktop window messages are logged to `~/.platypus/launch.log`.

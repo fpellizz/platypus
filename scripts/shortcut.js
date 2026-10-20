@@ -1,7 +1,7 @@
 'use strict';
-// Collegamenti per aprire Agent Office senza terminale:
+// Collegamenti per aprire Platypus senza terminale:
 //  - Windows: icona sul Desktop (il menu Start lo crea l'app al primo avvio)
-//  - macOS:   "Agent Office.app" in ~/Applications (un piccolo lanciatore)
+//  - macOS:   "Platypus.app" in ~/Applications (un piccolo lanciatore)
 //  - Linux:   voce nel menu delle applicazioni (~/.local/share/applications)
 // Tutti puntano alla cartella del repository: se la sposti, rilancia "npm run shortcut".
 
@@ -14,14 +14,14 @@ function psQuote(s) { return "'" + String(s).replace(/'/g, "''") + "'"; }
 
 function windows({ root, electron }) {
   const desktop = path.join(os.homedir(), 'Desktop');
-  const lnk = path.join(fs.existsSync(desktop) ? desktop : os.homedir(), 'Agent Office.lnk');
+  const lnk = path.join(fs.existsSync(desktop) ? desktop : os.homedir(), 'Platypus.lnk');
   const ps = [
     '$s = (New-Object -ComObject WScript.Shell).CreateShortcut(' + psQuote(lnk) + ')',
     '$s.TargetPath = ' + psQuote(electron),
     '$s.Arguments = ' + psQuote('"' + root + '"'),
     '$s.WorkingDirectory = ' + psQuote(root),
     '$s.IconLocation = ' + psQuote(path.join(root, 'build', 'icon.ico') + ',0'),
-    '$s.Description = "Agent Office"',
+    '$s.Description = "Platypus"',
     '$s.Save()',
   ].join('; ');
   const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf8' });
@@ -31,13 +31,13 @@ function windows({ root, electron }) {
 
 function mac({ root }) {
   const apps = path.join(os.homedir(), 'Applications');
-  const app = path.join(apps, 'Agent Office.app');
+  const app = path.join(apps, 'Platypus.app');
   const contents = path.join(app, 'Contents');
   fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true });
   fs.mkdirSync(path.join(contents, 'Resources'), { recursive: true });
-  const exe = path.join(contents, 'MacOS', 'agent-office');
+  const exe = path.join(contents, 'MacOS', 'platypus');
   fs.writeFileSync(exe, `#!/bin/bash
-# lanciatore di Agent Office (repository: ${root})
+# lanciatore di Platypus (repository: ${root})
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.volta/bin:$PATH"
 [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1
 cd ${JSON.stringify(root)} || exit 1
@@ -47,7 +47,7 @@ exec node scripts/launch.js --background
   // icona: dalla PNG del progetto con gli strumenti di macOS (sips + iconutil), se ci sono
   let icon = false;
   try {
-    const set = path.join(os.tmpdir(), 'agent-office.iconset');
+    const set = path.join(os.tmpdir(), 'platypus.iconset');
     fs.rmSync(set, { recursive: true, force: true });
     fs.mkdirSync(set);
     const src = path.join(root, 'build', 'icon.png');
@@ -60,10 +60,10 @@ exec node scripts/launch.js --background
   fs.writeFileSync(path.join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>Agent Office</string>
-  <key>CFBundleDisplayName</key><string>Agent Office</string>
-  <key>CFBundleIdentifier</key><string>com.agentoffice.launcher</string>
-  <key>CFBundleExecutable</key><string>agent-office</string>
+  <key>CFBundleName</key><string>Platypus</string>
+  <key>CFBundleDisplayName</key><string>Platypus</string>
+  <key>CFBundleIdentifier</key><string>com.platypus.launcher</string>
+  <key>CFBundleExecutable</key><string>platypus</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${require(path.join(root, 'package.json')).version}</string>
   ${icon ? '<key>CFBundleIconFile</key><string>icon</string>' : ''}
@@ -76,17 +76,17 @@ exec node scripts/launch.js --background
 function linux({ root }) {
   const dir = path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'applications');
   fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, 'agent-office.desktop');
+  const file = path.join(dir, 'platypus.desktop');
   fs.writeFileSync(file, `[Desktop Entry]
 Type=Application
-Name=Agent Office
+Name=Platypus
 Comment=Claude Code agents in an 80s pixel-art office
 Exec=${JSON.stringify(path.join(root, 'start.sh'))} --background
 Path=${root}
 Icon=${path.join(root, 'build', 'icon.png')}
 Terminal=false
 Categories=Development;Utility;
-StartupWMClass=Agent Office
+StartupWMClass=Platypus
 `);
   fs.chmodSync(file, 0o755);
   spawnSync('update-desktop-database', [dir]);
