@@ -33,7 +33,7 @@ Per controllare cosa hai già: `node -v` e `git --version`.
    Chiudi e riapri il terminale, così i nuovi comandi entrano nel PATH.
 2. Clona il repository (vedi [Repository privato](#repository-privato) se chiede le credenziali):
    ```powershell
-   git clone <indirizzo-del-repository> $HOME\platypus
+   git clone https://github.com/m4xl4b/platypus.git $HOME\platypus
    cd $HOME\platypus
    ```
 3. Avvia: doppio clic su **`start.cmd`** in Esplora file, oppure `npm start` dal terminale.
@@ -48,7 +48,7 @@ Per controllare cosa hai già: `node -v` e `git --version`.
    In alternativa scarica Node.js da nodejs.org; Git arriva anche con gli strumenti a riga di comando di Xcode (`xcode-select --install`).
 2. Clona il repository:
    ```sh
-   git clone <indirizzo-del-repository> ~/platypus
+   git clone https://github.com/m4xl4b/platypus.git ~/platypus
    cd ~/platypus
    ```
 3. Avvia: doppio clic su **`start.command`** nel Finder, oppure `./start.sh` dal Terminale.
@@ -73,7 +73,7 @@ Note:
    ```
 2. Clona e avvia:
    ```sh
-   git clone <indirizzo-del-repository> ~/platypus
+   git clone https://github.com/m4xl4b/platypus.git ~/platypus
    cd ~/platypus
    ./start.sh
    ```

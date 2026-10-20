@@ -28,7 +28,7 @@ Le novità di ogni versione sono in [CHANGELOG.md](CHANGELOG.md).
 Serve **[Node.js](https://nodejs.org) 20 o più recente** (e Git per clonare). Tutto il resto lo installa il lanciatore al primo avvio.
 
 ```sh
-git clone <indirizzo-del-repository> platypus
+git clone https://github.com/m4xl4b/platypus.git platypus
 cd platypus
 ```
 

@@ -1,7 +1,7 @@
 # Contribuire
 
 ```sh
-git clone <indirizzo-del-repository> && cd platypus
+git clone https://github.com/m4xl4b/platypus.git && cd platypus
 npm test             # prove veloci, non servono dipendenze
 npm run start:demo   # finestra con la demo (al primo avvio installa Electron)
 npm run web:demo     # lo stesso nel browser

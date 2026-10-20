@@ -20,7 +20,7 @@ Platypus runs straight from source: clone the repository and launch it. There ar
 winget install OpenJS.NodeJS.LTS
 winget install Git.Git
 # reopen the terminal, then:
-git clone <repository-url> $HOME\platypus
+git clone https://github.com/m4xl4b/platypus.git $HOME\platypus
 cd $HOME\platypus
 ```
 
@@ -30,7 +30,7 @@ Double-click **`start.cmd`** (or run `npm start`). `npm run shortcut` adds a Des
 
 ```sh
 brew install node git
-git clone <repository-url> ~/platypus
+git clone https://github.com/m4xl4b/platypus.git ~/platypus
 cd ~/platypus
 ```
 
@@ -42,7 +42,7 @@ Double-click **`start.command`** in Finder (or run `./start.sh`). `npm run short
 # Node.js via nvm (distribution packages are often too old)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 nvm install --lts
-git clone <repository-url> ~/platypus
+git clone https://github.com/m4xl4b/platypus.git ~/platypus
 cd ~/platypus
 ./start.sh
 ```
