@@ -2,6 +2,8 @@
 
 Platypus si usa direttamente dai sorgenti: si clona il repository e si lancia. Non ci sono installer né programmi già compilati da firmare: la finestra desktop è [Electron](https://www.electronjs.org), che npm scarica già pronto per il tuo sistema al primo avvio.
 
+*English version: [INSTALL.md](INSTALL.md).*
+
 - [Requisiti](#requisiti)
 - [Windows](#windows) · [macOS](#macos) · [Linux](#linux)
 - [Primo avvio](#primo-avvio)

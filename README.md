@@ -1,101 +1,101 @@
 # Platypus
 
-Un palazzo in pixel-art anni '80 dove vedi i tuoi agenti di **Claude Code** al lavoro, in tempo reale.
-Gira su **Windows, macOS e Linux**: si clona da git e si lancia, senza installer.
+An 80s pixel-art office building where you watch your **Claude Code** agents at work, in real time.
+Runs on **Windows, macOS and Linux**: clone it with git and launch it, no installer needed.
 
-*English: see [docs/INSTALL.md](docs/INSTALL.md) for the installation guide.*
+*Versione italiana: [README.it.md](README.it.md).*
 
-![Un piano dell'ufficio](docs/img/piano.png)
+![An office floor](docs/img/piano.png)
 
-## Che cosa fa
+## What it does
 
-- **Un piano per sessione** di Claude Code, con l'ascensore e un tabellone nell'atrio. Ogni piano è un organigramma: l'ufficio del capo (CLAUDE), le sale dei sottoagenti divise per tipo, i reparti dei capi reparto, i fumetti con quello che stanno facendo.
-- **Permessi dal fumetto**: quando un agente chiede un permesso rispondi **SÌ / SEMPRE / NO** direttamente nell'ufficio, oppure nel terminale come sempre.
-- **Costi e token** per piano e nel tempo, **avvisi** (agente fermo, errori di fila, budget superato), **archivio e replay** delle sessioni passate, **report giornaliero**.
-- **Mappa della realtà** di ogni agente: il territorio che conosce (con la nebbia su ciò che non ha mai visto), la sua traiettoria in uno spazio a 7 dimensioni, la bolla del contesto e la stella polare del compito (sperimentale).
-- **Vita d'ufficio**: il gatto sulla tastiera di chi è bloccato, il collega fastidioso (il nome lo scegli tu), feste per commit e test verdi, notte, vestiti per feste e meteo, età e mantelli da supereroe secondo modello ed effort.
-- **Italiano e inglese**, con una struttura pronta per altre lingue.
+- **One floor per Claude Code session**, with an elevator and a board in the lobby. Each floor is an org chart: the boss's office (CLAUDE), the subagent rooms grouped by type, the department heads' departments, and speech balloons showing what everyone is doing.
+- **Permissions from the balloon**: when an agent asks for permission, answer **YES / ALWAYS / NO** right in the office, or in the terminal as usual.
+- **Costs and tokens** per floor and over time, **alerts** (stuck agent, repeated errors, budget exceeded), **archive and replay** of past sessions, **daily report**.
+- **Map of reality** for each agent: the territory it knows (with fog over what it has never seen), its trajectory through a 7-dimensional space, the context bubble and the task's north star (experimental).
+- **Office life**: the cat on the keyboard of whoever is stuck, the annoying coworker (you pick the name), parties for commits and green tests, night time, outfits for holidays and weather, age and superhero capes based on model and effort.
+- **Italian and English**, with a structure ready for more languages.
 
-Le novità di ogni versione sono in [CHANGELOG.md](CHANGELOG.md).
+What's new in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 | | |
 |---|---|
-| ![L'atrio con il tabellone](docs/img/atrio.png) | ![Permessi dal fumetto](docs/img/permesso.png) |
-| ![Mappa della realtà](docs/img/mappa.png) | ![Bolla del contesto e stella polare](docs/img/bolla-stella.png) |
+| ![The lobby with the board](docs/img/atrio.png) | ![Permissions from the balloon](docs/img/permesso.png) |
+| ![Map of reality](docs/img/mappa.png) | ![Context bubble and north star](docs/img/bolla-stella.png) |
 
-## Avvio rapido
+## Quick start
 
-Serve **[Node.js](https://nodejs.org) 20 o più recente** (e Git per clonare). Tutto il resto lo installa il lanciatore al primo avvio.
+You need **[Node.js](https://nodejs.org) 20 or newer** (and Git to clone). The launcher installs everything else on first run.
 
 ```sh
 git clone https://github.com/m4xl4b/platypus.git platypus
 cd platypus
 ```
 
-| Sistema | Avvio |
+| System | Launch |
 |---|---|
-| Windows | doppio clic su **`start.cmd`** (oppure `npm start`) |
-| macOS | doppio clic su **`start.command`** (oppure `./start.sh`) |
-| Linux | `./start.sh` (oppure `npm start`) |
+| Windows | double-click **`start.cmd`** (or `npm start`) |
+| macOS | double-click **`start.command`** (or `./start.sh`) |
+| Linux | `./start.sh` (or `npm start`) |
 
-Il primo avvio scarica Electron (circa 120 MB) e richiede un minuto; i successivi sono immediati.
-Per avere l'icona sul Desktop o nel menu delle applicazioni: `npm run shortcut`.
+The first launch downloads Electron (about 120 MB) and takes a minute; later launches are instant.
+To get an icon on the Desktop or in the applications menu: `npm run shortcut`.
 
-**Senza installare nulla** c'è la modalità browser, che usa solo Node.js: `npm run web` (oppure `node scripts/launch.js --web`).
+**Without installing anything** there is browser mode, which only needs Node.js: `npm run web` (or `node scripts/launch.js --web`).
 
-La guida completa, con i dettagli per ogni sistema e la soluzione ai problemi più comuni, è in [docs/INSTALLAZIONE.md](docs/INSTALLAZIONE.md).
+The full guide, with details for each system and fixes for the most common problems, is in [docs/INSTALL.md](docs/INSTALL.md).
 
-### Aggiornare
+### Updating
 
 ```sh
 git pull
 ```
 
-Al lancio successivo le dipendenze si aggiornano da sole, se sono cambiate.
+On the next launch the dependencies update themselves, if they have changed.
 
-## Collegare Claude Code
+## Connecting Claude Code
 
-L'ufficio legge già i transcript che Claude Code scrive nella cartella `~/.claude`. Per avere gli eventi istantanei e i permessi dal fumetto, collega gli **hook**:
+The office already reads the transcripts Claude Code writes to the `~/.claude` folder. For instant events and permissions from the balloon, connect the **hooks**:
 
-- al primo avvio l'app te lo chiede, oppure
-- menu dell'icona nella barra di sistema → *Collega a Claude Code*, oppure
-- `npm run hooks:install` (per toglierli: `npm run hooks:uninstall`).
+- the app asks you on first launch, or
+- system tray icon menu → *Connect to Claude Code*, or
+- `npm run hooks:install` (to remove them: `npm run hooks:uninstall`).
 
-Gli hook vengono aggiunti a `~/.claude/settings.json`. Le tue impostazioni restano intatte e la prima volta viene salvata una copia in `settings.json.platypus-backup`. Valgono per le sessioni aperte dopo l'installazione. Se l'ufficio è chiuso falliscono in silenzio e Claude Code lavora come sempre.
+The hooks are added to `~/.claude/settings.json`. Your settings stay intact, and the first time a copy is saved to `settings.json.platypus-backup`. They apply to sessions opened after installing. If the office is closed they fail silently and Claude Code works as usual.
 
 ## Privacy
 
-Tutto avviene **sul tuo computer, in sola lettura**: niente cloud, niente chiavi API. Il server dell'ufficio ascolta solo su `127.0.0.1:47800` e rifiuta richieste da altri host o da siti web. L'unica connessione esterna, facoltativa, è il meteo (Open-Meteo, solo il nome della città scelto nelle opzioni; si spegne lasciando vuota la città).
+Everything happens **on your computer, read-only**: no cloud, no API keys. The office server only listens on `127.0.0.1:47800` and rejects requests from other hosts or from websites. The only outside connection, optional, is the weather (Open-Meteo, only the city name chosen in the options; turn it off by leaving the city empty).
 
-## Comandi principali
+## Main controls
 
-| Tasto | Azione |
+| Key | Action |
 |---|---|
-| `↑` `↓` · `1`…`9` · `T` | cambia piano · vai al piano · atrio |
-| `G` | mappa della realtà dell'agente selezionato |
-| `A` | archivio e replay |
-| `O` | opzioni (lingua, budget, avvisi, personaggi, meteo, cartelle) |
-| `/` | cerca su tutti i piani |
-| `M` | modalità mini, sempre in primo piano |
+| `↑` `↓` · `1`…`9` · `T` | change floor · go to floor · lobby |
+| `G` | map of reality for the selected agent |
+| `A` | archive and replay |
+| `O` | options (language, budget, alerts, characters, weather, folders) |
+| `/` | search all floors |
+| `M` | mini mode, always on top |
 | `D` | demo |
-| `H` | aiuto e legenda |
+| `H` | help and legend |
 
-## Per chi sviluppa
+## For developers
 
 ```sh
-npm test            # prove su motore, API, hook e traduzioni (non serve installare nulla)
-npm run i18n:check  # testi da tradurre
-npm run start:demo  # finestra con la demo
+npm test            # checks on engine, API, hooks and translations (nothing to install)
+npm run i18n:check  # strings to translate
+npm run start:demo  # window with the demo
 ```
 
-- Il **motore** (`src/core`) è Node.js puro, senza dipendenze: legge i dati, tiene lo stato e serve l'interfaccia e le API su HTTP.
-- L'**interfaccia** (`renderer/`) è una pagina web statica: la stessa nella finestra desktop e nel browser.
-- La **finestra** (`src/main.js`) è un guscio Electron sottile; i dettagli, e come sostituirlo con Tauri, sono in [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md).
-- Per contribuire: [CONTRIBUTING.md](CONTRIBUTING.md).
+- The **engine** (`src/core`) is pure Node.js, with no dependencies: it reads the data, keeps the state and serves the interface and the API over HTTP.
+- The **interface** (`renderer/`) is a static web page: the same in the desktop window and in the browser.
+- The **window** (`src/main.js`) is a thin Electron shell; the details, and how to replace it with Tauri, are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- To contribute: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Volendo, si possono anche compilare i programmi per ogni sistema (`npm run dist:win`, `dist:mac`, `dist:linux`), ma non è il modo previsto di distribuirlo.
+If you want, you can also build binaries for each system (`npm run dist:win`, `dist:mac`, `dist:linux`), but that is not the intended way to distribute it.
 
-## Licenza
+## License
 
 [MIT](LICENSE) © 2026 Massimiliano Pane.
-Font: Press Start 2P e VT323 (SIL Open Font License, inclusi in `renderer/fonts`).
+Fonts: Press Start 2P and VT323 (SIL Open Font License, included in `renderer/fonts`).

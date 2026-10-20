@@ -1,23 +1,25 @@
-# Contribuire
+# Contributing
+
+*Versione italiana: [CONTRIBUTING.it.md](CONTRIBUTING.it.md).*
 
 ```sh
 git clone https://github.com/m4xl4b/platypus.git && cd platypus
-npm test             # prove veloci, non servono dipendenze
-npm run start:demo   # finestra con la demo (al primo avvio installa Electron)
-npm run web:demo     # lo stesso nel browser
+npm test             # quick checks, no dependencies needed
+npm run start:demo   # window with the demo (installs Electron on first run)
+npm run web:demo     # the same in the browser
 ```
 
-## Regole della casa
+## House rules
 
-- **Il motore (`src/core`) non ha dipendenze npm**: solo moduli di Node.js. È ciò che permette la modalità browser senza installazione e un eventuale passaggio ad altri gusci (vedi [docs/ARCHITETTURA.md](docs/ARCHITETTURA.md)).
-- **Tutto ciò che dipende dal sistema operativo** va in `src/core/osint.js`, `src/core/sources.js`, `src/core/hooks.js`, `src/autostart.js` o `scripts/`, e deve avere un comportamento per Windows, macOS e Linux (anche solo un messaggio chiaro).
-- **Testi**: ogni testo visibile passa da `tr('testo italiano', { segnaposto })` o `trn(singolare, plurale, n)`. Non usare `t()`: è il nome della variabile del tempo. Dopo aver aggiunto testi esegui `npm run i18n:check` e completa `src/i18n/locales/en/*.json`.
-- **Privacy**: niente chiamate di rete oltre al meteo (facoltativo). Il server ascolta solo su 127.0.0.1.
-- Prima di aprire una pull request: `npm test` deve passare. Le GitHub Actions lo eseguono su Windows, macOS e Linux.
+- **The engine (`src/core`) has no npm dependencies**: Node.js modules only. That is what makes browser mode work without installing anything, and keeps a future move to other shells possible (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)).
+- **Anything that depends on the operating system** goes in `src/core/osint.js`, `src/core/sources.js`, `src/core/hooks.js`, `src/autostart.js` or `scripts/`, and must have a behavior for Windows, macOS and Linux (even just a clear message).
+- **Strings**: every visible string goes through `tr('Italian text', { placeholders })` or `trn(singular, plural, n)`. Don't use `t()`: it is the name of the time variable. After adding strings run `npm run i18n:check` and fill in `src/i18n/locales/en/*.json`.
+- **Privacy**: no network calls apart from the (optional) weather. The server only listens on 127.0.0.1.
+- Before opening a pull request, `npm test` must pass. GitHub Actions runs it on Windows, macOS and Linux.
 
-## Aggiungere una lingua
+## Adding a language
 
-1. Copia `src/i18n/locales/en` in `src/i18n/locales/<codice>` (es. `es`).
-2. Traduci i valori: le chiavi sono il testo italiano e i segnaposto `{nome}` restano uguali.
-3. Aggiungi la lingua a `LANGS` e `LOCALE_TAG` in `src/i18n/index.js`.
-4. `npm run i18n:check` dice cosa manca.
+1. Copy `src/i18n/locales/en` to `src/i18n/locales/<code>` (e.g. `es`).
+2. Translate the values: the keys are the Italian text, and `{name}` placeholders stay the same.
+3. Add the language to `LANGS` and `LOCALE_TAG` in `src/i18n/index.js`.
+4. `npm run i18n:check` tells you what is missing.

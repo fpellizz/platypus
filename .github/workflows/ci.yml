@@ -1,7 +1,7 @@
-# Prove su Windows, macOS e Linux a ogni push e pull request.
-#  - "motore": npm test con Node 20 e 22 (non serve installare nulla)
-#  - "finestra": installa Electron come farebbe un utente, apre l'app con la demo,
-#    fa uno screenshot e lo salva tra gli artifact della run
+# Checks on Windows, macOS and Linux on every push and pull request.
+#  - "engine": npm test with Node 20 and 22 (nothing to install)
+#  - "window": installs Electron like a user would, opens the app with the demo,
+#    takes a screenshot and saves it among the run's artifacts
 name: CI
 
 on:
@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  motore:
-    name: Motore · ${{ matrix.os }} · Node ${{ matrix.node }}
+  engine:
+    name: Engine · ${{ matrix.os }} · Node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -25,9 +25,9 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node scripts/smoke-test.js
 
-  finestra:
-    name: Finestra · ${{ matrix.os }}
-    needs: motore
+  window:
+    name: Window · ${{ matrix.os }}
+    needs: engine
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -39,12 +39,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Installa le dipendenze come il lanciatore
+      - name: Install dependencies like the launcher does
         run: node scripts/launch.js --setup
-      - name: Librerie grafiche (Linux)
+      - name: Graphics libraries (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb libgtk-3-0 libnss3 libgbm1 libxss1 libnotify4 libasound2t64
-      - name: Avvia la finestra con la demo e fai uno screenshot
+      - name: Open the window with the demo and take a screenshot
         shell: bash
         env:
           PLATYPUS_SNAPSHOT: ${{ github.workspace }}/snapshot-${{ runner.os }}.png

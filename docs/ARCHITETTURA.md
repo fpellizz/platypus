@@ -1,5 +1,7 @@
 # Architettura
 
+*English version: [ARCHITECTURE.md](ARCHITECTURE.md).*
+
 Platypus è diviso in tre strati indipendenti. È quello che permette di farlo girare uguale su Windows, macOS e Linux, e un domani di cambiare il guscio (per esempio con Tauri) senza rifare né il motore né la grafica.
 
 ```
