@@ -1,0 +1,103 @@
+# Architettura
+
+Agent Office è diviso in tre strati indipendenti. È quello che permette di farlo girare uguale su Windows, macOS e Linux, e un domani di cambiare il guscio (per esempio con Tauri) senza rifare né il motore né la grafica.
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ Guscio desktop        src/main.js + src/preload.js         │  Electron: finestra, icona nella barra,
+│ (sostituibile)        src/autostart.js                     │  notifiche, avvio all'accesso
+├────────────────────────────────────────────────────────────┤
+│ Interfaccia           renderer/  (HTML, CSS, JS, canvas)    │  la stessa pagina nella finestra
+│                                                            │  e nel browser
+├────────────────────────────────────────────────────────────┤
+│ Motore                src/core/  (Node.js, nessuna         │  legge i dati di Claude Code, tiene lo
+│                       dipendenza esterna)                  │  stato, serve pagina e API su HTTP
+└────────────────────────────────────────────────────────────┘
+        ▲ transcript e registro (~/.claude)      ▲ hook (curl → 127.0.0.1:47800)
+```
+
+## Motore (`src/core`)
+
+Solo moduli di Node.js, nessun pacchetto npm: per questo la modalità browser parte senza `npm install`.
+
+| File | Ruolo |
+|---|---|
+| `index.js` | avvio, server HTTP solo su 127.0.0.1, SSE, API, permessi in sospeso |
+| `sources.js` | lettura dei transcript (`projects/**/*.jsonl`), del registro sessioni, ricerca delle cartelle Cowork |
+| `state.js` | stato di sessioni, agenti e sottoagenti, costi, avvisi, lavagne, rilasci |
+| `hooks.js` | installazione e rimozione degli hook in `settings.json` |
+| `archive.js` | archivio e replay con orologio virtuale |
+| `osint.js` | integrazione con il sistema: finestra in primo piano, riprendi sessione, apri cartella (Windows / macOS / Linux) |
+| `stats.js` | statistiche per giorno e settimana, report |
+| `worldmap.js` | mappa della realtà: territorio, frontiera, traiettoria a 7 dimensioni |
+| `semantic.js` | bolla del contesto e stella polare (TF-IDF, PCA, gruppi, allineamento) |
+| `weather.js`, `releases.js`, `describe.js`, `demo.js`, `demoworld.js` | meteo, rilasci git/gh, descrizioni degli strumenti, demo |
+| `../i18n` | traduzioni (chiave = testo italiano, `locales/<lingua>/*.json`) |
+
+Tutto ciò che dipende dal sistema operativo sta in tre punti: `osint.js`, `sources.js` (percorsi di Cowork e WSL) e `hooks.js` (`curl` / `curl.exe`).
+
+### API (tutte su `http://127.0.0.1:<porta>`)
+
+| Metodo e percorso | Cosa fa |
+|---|---|
+| `GET /events` | stream SSE dello stato (e dei fotogrammi del replay) |
+| `GET /api/state`, `/api/settings` | stato e opzioni |
+| `POST /api/settings` | salva le opzioni |
+| `POST /agent-office-hook` | eventi degli hook (asincroni) |
+| `POST /agent-office-hook/permission` | hook sincrono dei permessi: resta in attesa della risposta dall'ufficio |
+| `POST /api/approve` | risposta a un permesso: `allow`, `always`, `deny` |
+| `GET /api/agentmap`, `/api/agentmind` | mappa della realtà, bolla e stella polare |
+| `GET /api/archive`, `POST /api/replay` | archivio e replay |
+| `POST /api/focus`, `/api/resume`, `/api/open-folder` | finestra, ripresa, cartella |
+| `GET /api/stats/costs`, `/api/stats/honors`, `/api/report` | statistiche e report |
+| `POST /api/demo`, `/api/cowork`, `/api/cowork-scan` | demo, ala Cowork, ricerca Cowork |
+| `GET /i18n.js` | traduzioni per la pagina |
+
+Il server rifiuta le richieste con un `Host` o un `Origin` diversi da `127.0.0.1`/`localhost` (protezione dal DNS rebinding e dai siti web).
+
+## Interfaccia (`renderer/`)
+
+Pagina statica: `index.html`, `style.css`, `game.js` (palazzo, piani, fumetti), `worldmap.js` (mappa della realtà), `report.html`, `i18n-runtime.js`. Parla con il motore solo via HTTP e SSE. L'unico punto di contatto con il guscio è l'oggetto facoltativo `window.officeApp` (se manca, si è nel browser).
+
+### Contratto `window.officeApp` (da `src/preload.js`)
+
+| Funzione | Uso |
+|---|---|
+| `minimize()`, `close()` | pulsanti della barra del titolo |
+| `togglePin()`, `getPin()` | sempre in primo piano |
+| `setCounts({sessions, agents, busy, waiting})` | aggiorna l'icona nella barra e fa lampeggiare la finestra |
+| `setWidget(on)` | modalità mini (finestra piccola sempre in primo piano) |
+| `onGoto(cb)` | clic su una notifica → vai al piano della sessione |
+
+## Guscio desktop (`src/main.js`)
+
+Avvia il motore nello stesso processo, apre una finestra senza cornice su `http://127.0.0.1:<porta>/`, gestisce:
+- icona e menu nella barra di sistema;
+- notifiche (permessi, avvisi, report);
+- modalità mini;
+- avvio all'accesso (`src/autostart.js`);
+- su Windows, voce nel menu Start con l'AppUserModelID per le notifiche;
+- su macOS, menu dell'app e icona nel Dock.
+
+## Passare a Tauri (o a un altro guscio)
+
+Il motore e l'interfaccia non cambiano. Un guscio Tauri dovrebbe:
+
+1. **avviare il motore**, in due modi possibili:
+   - come processo esterno con Node.js (`node src/standalone.js --no-open`), oppure compilato in un eseguibile unico (`node --experimental-sea-config`, Bun o Deno);
+   - in alternativa portarlo in Rust un modulo alla volta, mantenendo le stesse API HTTP;
+2. **aprire una webview** su `http://127.0.0.1:<porta>/`;
+3. **offrire `window.officeApp`** con le stesse funzioni della tabella sopra, implementate come comandi Tauri (`invoke`);
+4. **rifare in Rust le parti del guscio**: icona nella barra (`tray`), notifiche (`tauri-plugin-notification`), avvio all'accesso (`tauri-plugin-autostart`), finestra in primo piano e modalità mini.
+
+Il vantaggio sarebbero programmi compilati molto più piccoli (circa 10 MB invece di 150) e meno memoria. Il costo: chi parte dai sorgenti deve installare Rust e le librerie di sistema per compilare. Per questo, finché la distribuzione è "clona e lancia", il guscio resta Electron.
+
+## Dati sul disco
+
+| Percorso | Contenuto |
+|---|---|
+| `~/.claude/` | di Claude Code: letto, mai modificato, tranne gli hook in `settings.json` se li installi |
+| `~/.agent-office/settings.json` | opzioni dell'ufficio |
+| `~/.agent-office/stats.json` | statistiche per giorno e settimana |
+| `~/.agent-office/launch.log` | messaggi dell'ultimo avvio della finestra |
+| cartella dati di Electron (`Agent Office`) | posizione della finestra e preferenze del guscio |

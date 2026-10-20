@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Office</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.png">
+</head>
+<body class="crt">
+  <header id="titlebar">
+    <div class="logo"><span class="a">AGENT</span><span class="b">OFFICE</span></div>
+    <div id="stats"></div>
+    <div class="right">
+      <span id="hookstate" title="Hook di Claude Code"></span>
+      <span id="clock"></span>
+      <button id="btn-balloons" title="Tutti i fumetti (B)">FUMETTI</button>
+      <button id="btn-follow" title="Segui chi ti chiede un permesso (F)">SEGUI</button>
+      <button id="btn-demo" title="Modalità demo (D)">DEMO</button>
+      <button id="btn-sound" title="Suoni 8-bit (S)">SFX</button>
+      <button id="btn-crt" title="Effetto monitor CRT (C)">CRT</button>
+      <button id="btn-search" title="Cerca su tutti i piani (/)">CERCA</button>
+      <button id="btn-mini" title="Modalità mini sempre in primo piano (M)">MINI</button>
+      <button id="btn-settings" title="Opzioni: budget, avvisi e personaggi (O)">OPZ</button>
+      <button id="btn-help" title="Aiuto (H)">?</button>
+      <span class="win">
+        <button id="btn-pin" title="Sempre in primo piano (P)">PIN</button>
+        <button id="btn-min" title="Riduci">_</button>
+        <button id="btn-close" title="Chiudi">X</button>
+      </span>
+    </div>
+  </header>
+
+  <main id="middle">
+    <nav id="elevator" aria-label="Piani"></nav>
+    <section id="viewport">
+      <div id="stage">
+        <div id="world-wrap">
+          <canvas id="world"></canvas>
+          <div id="overlay"></div>
+        </div>
+      </div>
+      <div id="board" hidden></div>
+      <div id="archive" hidden></div>
+      <div id="vcr" hidden></div>
+      <div id="settings" hidden></div>
+      <div id="toast" hidden></div>
+      <div id="party" hidden></div>
+      <div id="search" hidden></div>
+      <div id="worldmap" hidden></div>
+      <div id="doors"><i class="l"></i><i class="r"></i></div>
+      <div id="empty" hidden>
+        <div class="coin">INSERT COIN</div>
+        <p>Nessuna sessione di Claude Code attiva.</p>
+        <p>Avvia <code>claude</code> in un terminale e i tuoi agenti entreranno nel palazzo.<br>Premi <kbd>D</kbd> per la demo.</p>
+        <p class="dim" id="empty-cowork"></p>
+      </div>
+      <div id="offline" hidden>CONNESSIONE PERSA… RIPROVO</div>
+      <div id="info" hidden></div>
+      <div id="roomlist" hidden></div>
+      <div id="help" hidden>
+        <h2>COMANDI</h2>
+        <ul>
+          <li><kbd>↑</kbd> <kbd>↓</kbd> cambia piano &nbsp; <kbd>T</kbd> atrio &nbsp; <kbd>1</kbd>…<kbd>9</kbd> vai al piano</li>
+          <li><kbd>A</kbd> archivio nel seminterrato &nbsp; <kbd>Spazio</kbd> pausa del replay</li>
+          <li><kbd>O</kbd> opzioni (budget, avvisi, personaggi)</li>
+          <li><kbd>/</kbd> cerca su tutti i piani &nbsp; <kbd>M</kbd> modalità mini</li>
+          <li><kbd>G</kbd> mappa della realtà dell'agente selezionato</li>
+          <li><kbd>B</kbd> tutti i fumetti / solo gli importanti</li>
+          <li><kbd>F</kbd> segui chi chiede un permesso</li>
+          <li><kbd>+</kbd> <kbd>-</kbd> zoom &nbsp; <kbd>D</kbd> demo &nbsp; <kbd>S</kbd> suoni</li>
+          <li><kbd>C</kbd> effetto CRT &nbsp; <kbd>P</kbd> primo piano &nbsp; <kbd>H</kbd> aiuto</li>
+          <li>Clic su un agente o su un contatore: dettagli</li>
+        </ul>
+        <h2>COME LEGGERE IL PIANO</h2>
+        <ul>
+          <li><b>CLAUDE</b>: il capo della sessione, nell'ufficio a vetri in alto.</li>
+          <li><b>Sale</b>: ognuna raccoglie i sottoagenti dello stesso tipo.</li>
+          <li><b>Reparti a vetri</b>: appartengono a un sottoagente che ha lanciato altri agenti, il capo reparto.</li>
+          <li>I cavi portano gli ordini dal capo alle sale.</li>
+          <li><b>Gatto</b>: si sdraia sulla tastiera di chi è bloccato. Cliccalo per sapere perché.</li>
+          <li><b>RILASCI</b>: la bacheca sulla parete. Commit, PR e test verdi finiscono lì e fanno partire la festa.</li>
+          <li><b>Sala creativa</b>: la lavagna del capo ha la sua lista di cose da fare, quella libera i piani e i disegnini di chi finisce. Chi si arrabbia la butta per terra.</li>
+          <li>Con tanti agenti ne vedi al massimo 8 per sala: il contatore in basso dice quanti altri lavorano, quanti hanno finito e quanto è costata la sala.</li>
+          <li><b>! arancione</b>: un avviso da controllare (agente fermo, errori di fila, budget superato, sessione che ti aspetta).</li>
+          <li><b>SÌ · SEMPRE · NO</b>: i pulsanti nel fumetto rosso di chi chiede un permesso. Rispondi da qui senza passare dal terminale (SEMPRE = non chiedere più in questa sessione). Funziona anche dalla striscia mini.</li>
+          <li><b>Età e costumi</b>: più il modello di un agente è vecchio, più il personaggio è anziano; più l'effort è alto, più è vestito da supereroe.</li>
+          <li><b>Feste e meteo</b>: per le feste, con il freddo, il caldo o la pioggia i personaggi si vestono di conseguenza, e dalle finestre vedi il meteo della tua città (si sceglie nelle opzioni).</li>
+          <li><b>MAPPA DELLA REALTÀ</b>: dalla scheda di un agente (o con il tasto G) vedi il suo territorio, cioè i file che conosce con la nebbia su tutto il resto, e la sua traiettoria in uno spazio a 7 dimensioni che dice come sta lavorando.</li>
+          <li><b>VAI ALLA FINESTRA</b>: dalla bacheca o dalla scheda di un agente, porta in primo piano il terminale o l'app di quella sessione.</li>
+        </ul>
+        <h2>LEGENDA</h2>
+        <ul class="legend">
+          <li><i class="st-working"></i> lavora con uno strumento</li>
+          <li><i class="st-thinking"></i> pensa / valuta</li>
+          <li><i class="st-supervising"></i> coordina i sottoagenti</li>
+          <li><i class="st-waiting"></i> aspetta il tuo permesso</li>
+          <li><i class="st-idle"></i> ha finito, tocca a te</li>
+          <li><i class="st-alert"></i> avviso da controllare</li>
+        </ul>
+        <p class="dim">Premi H per chiudere</p>
+      </div>
+      <div id="crt-fx"></div>
+    </section>
+  </main>
+
+  <div id="widget" hidden></div>
+  <footer id="ticker"><div id="ticker-inner"></div></footer>
+
+  <script src="i18n.js"></script>
+  <script src="i18n-runtime.js"></script>
+  <script src="game.js"></script>
+  <script src="worldmap.js"></script>
+</body>
+</html>

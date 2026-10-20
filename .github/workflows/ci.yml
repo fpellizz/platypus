@@ -1,0 +1,65 @@
+# Prove su Windows, macOS e Linux a ogni push e pull request.
+#  - "motore": npm test con Node 20 e 22 (non serve installare nulla)
+#  - "finestra": installa Electron come farebbe un utente, apre l'app con la demo,
+#    fa uno screenshot e lo salva tra gli artifact della run
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  motore:
+    name: Motore · ${{ matrix.os }} · Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node scripts/smoke-test.js
+
+  finestra:
+    name: Finestra · ${{ matrix.os }}
+    needs: motore
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Installa le dipendenze come il lanciatore
+        run: node scripts/launch.js --setup
+      - name: Librerie grafiche (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgtk-3-0 libnss3 libgbm1 libxss1 libnotify4 libasound2t64
+      - name: Avvia la finestra con la demo e fai uno screenshot
+        shell: bash
+        env:
+          AGENT_OFFICE_SNAPSHOT: ${{ github.workspace }}/snapshot-${{ runner.os }}.png
+          AGENT_OFFICE_SNAPSHOT_DELAY: '12000'
+          AGENT_OFFICE_PORT: '47811'
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            timeout 120 xvfb-run -a npx electron . --demo --no-sandbox
+          else
+            npx electron . --demo
+          fi
+          test -s "$AGENT_OFFICE_SNAPSHOT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snapshot-${{ runner.os }}
+          path: snapshot-*.png
+          if-no-files-found: warn

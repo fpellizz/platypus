@@ -1,0 +1,140 @@
+#!/usr/bin/env node
+'use strict';
+// Avvio di Agent Office da sorgente, uguale su Windows, macOS e Linux.
+//   node scripts/launch.js              finestra desktop (Electron)
+//   node scripts/launch.js --web        solo browser: non serve installare nulla
+//   node scripts/launch.js --demo       con la demo accesa
+//   node scripts/launch.js --background avvia e restituisce subito il terminale
+//   node scripts/launch.js --setup      installa le dipendenze e basta
+//   node scripts/launch.js --shortcut   crea il collegamento sul desktop / nel menu delle app
+// Alla prima esecuzione (e dopo ogni "git pull" che cambia le dipendenze) installa da solo
+// quello che serve con npm. Se la finestra desktop non può partire, apre l'ufficio nel browser.
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+const { spawn, spawnSync } = require('child_process');
+
+const ROOT = path.join(__dirname, '..');
+const args = process.argv.slice(2);
+const has = f => args.includes(f);
+const passThrough = args.filter(a => !['--web', '--background', '--setup', '--shortcut', '--electron'].includes(a));
+const IS_WIN = process.platform === 'win32';
+const LOG_DIR = path.join(os.homedir(), '.agent-office');
+const LOG = path.join(LOG_DIR, 'launch.log');
+
+function say(msg) { console.log('[agent-office] ' + msg); }
+function fail(msg) { console.error('[agent-office] ' + msg); process.exitCode = 1; }
+
+// ---------------------------------------------------------------- requisiti
+const [major] = process.versions.node.split('.').map(Number);
+if (major < 18) {
+  fail(`Serve Node.js 20 o più recente (hai la ${process.versions.node}). Scaricalo da https://nodejs.org  ·  Node.js 20 or newer is required.`);
+  process.exit(1);
+}
+if (major < 20) say(`Node.js ${process.versions.node}: funziona, ma è consigliato il 20 o più recente.`);
+
+// ---------------------------------------------------------------- dipendenze
+function lockHash() {
+  try { return crypto.createHash('sha1').update(fs.readFileSync(path.join(ROOT, 'package-lock.json'))).update(fs.readFileSync(path.join(ROOT, 'package.json'))).digest('hex'); }
+  catch { return 'none'; }
+}
+const MARK = path.join(ROOT, 'node_modules', '.agent-office-deps');
+function electronPath() {
+  try {
+    const p = require(path.join(ROOT, 'node_modules', 'electron'));
+    return typeof p === 'string' && fs.existsSync(p) ? p : null;
+  } catch { return null; }
+}
+function depsOk() {
+  try { return fs.readFileSync(MARK, 'utf8').trim() === lockHash() && !!electronPath(); } catch { return false; }
+}
+function installDeps() {
+  say('Installo le dipendenze (solo la prima volta o dopo un aggiornamento, ~120 MB da scaricare)…');
+  say('Installing dependencies (first run or after an update, ~120 MB download)…');
+  const npm = IS_WIN ? 'npm.cmd' : 'npm';
+  const useCi = fs.existsSync(path.join(ROOT, 'package-lock.json'));
+  // l'unica dipendenza è Electron: npm scarica da solo quella giusta per il sistema (Windows, macOS, Linux; x64 o arm64)
+  const r = spawnSync(npm, [useCi ? 'ci' : 'install', '--no-audit', '--no-fund'], { cwd: ROOT, stdio: 'inherit', shell: IS_WIN });
+  if (r.status !== 0) {
+    fail('npm non è riuscito a installare le dipendenze. Controlla la connessione (o il proxy aziendale: vedi docs/INSTALLAZIONE.md) e riprova.');
+    return false;
+  }
+  try { fs.writeFileSync(MARK, lockHash()); } catch {}
+  return !!electronPath();
+}
+
+// ---------------------------------------------------------------- modalità browser
+function runWeb() {
+  say('Apro l\'ufficio nel browser · opening the office in your browser');
+  const child = spawn(process.execPath, [path.join(ROOT, 'src', 'standalone.js'), ...passThrough], { cwd: ROOT, stdio: 'inherit' });
+  child.on('exit', code => process.exit(code || 0));
+}
+
+// ---------------------------------------------------------------- finestra desktop
+function canShowWindow() {
+  if (process.platform !== 'linux') return true;
+  return !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+}
+function startElectron(extra, background) {
+  const exe = electronPath();
+  try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
+  const errFd = fs.openSync(LOG, 'w');
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE; // se è impostata, Electron partirebbe come Node senza finestra
+  const child = spawn(exe, [ROOT, ...extra, ...passThrough], {
+    cwd: ROOT,
+    detached: background,
+    stdio: background ? ['ignore', errFd, errFd] : ['ignore', 'inherit', errFd],
+    env,
+    windowsHide: false,
+  });
+  return new Promise(resolve => {
+    let done = false;
+    const finish = v => { if (!done) { done = true; resolve(v); } };
+    child.on('error', e => finish({ ok: false, error: e.message }));
+    child.on('exit', code => finish({ ok: code === 0, exited: true, code }));
+    // se dopo qualche secondo è ancora viva, è partita
+    setTimeout(() => finish({ ok: true, child }), 5000);
+  });
+}
+function logText() { try { return fs.readFileSync(LOG, 'utf8'); } catch { return ''; } }
+
+async function runDesktop() {
+  if (!canShowWindow()) { say('Nessuno schermo grafico (DISPLAY/WAYLAND_DISPLAY): passo alla modalità browser.'); return runWeb(); }
+  if (!depsOk() && !installDeps()) { say('Senza le dipendenze apro la modalità browser, che non ne ha bisogno.'); return runWeb(); }
+  const background = has('--background');
+  const extra = [];
+  if (process.platform === 'linux' && process.env.AGENT_OFFICE_NO_SANDBOX === '1') extra.push('--no-sandbox');
+  let r = await startElectron(extra, background);
+  // alcune distribuzioni Linux (es. Ubuntu 24.04 con AppArmor) bloccano la sandbox di Electron scaricato da npm
+  if (r.exited && process.platform === 'linux' && !extra.includes('--no-sandbox') && /sandbox/i.test(logText())) {
+    say('La sandbox di Electron non è disponibile su questo sistema: riavvio con --no-sandbox (vedi docs/INSTALLAZIONE.md).');
+    extra.push('--no-sandbox');
+    r = await startElectron(extra, background);
+  }
+  if (r.exited && r.code !== 0) {
+    const log = logText().trim().split('\n').slice(-8).join('\n');
+    if (/porta|port|EADDRINUSE|già aperto/i.test(log)) { say('Agent Office è già aperto.'); process.exit(0); }
+    say('La finestra desktop non è partita:\n' + log);
+    say('Apro la modalità browser al suo posto.');
+    return runWeb();
+  }
+  if (r.error) { say('Electron non si avvia (' + r.error + '): apro la modalità browser.'); return runWeb(); }
+  if (background) { if (r.child) r.child.unref(); say('Agent Office è partito. Puoi chiudere questo terminale.'); process.exit(0); }
+  if (r.child) r.child.on('exit', code => process.exit(code || 0));
+}
+
+// ---------------------------------------------------------------- main
+(async () => {
+  if (has('--setup')) { process.exit(depsOk() || installDeps() ? 0 : 1); }
+  if (has('--shortcut')) {
+    if (!depsOk() && !installDeps()) process.exit(1);
+    const r = require('./shortcut').install({ root: ROOT, electron: electronPath() });
+    for (const line of r) say(line);
+    return;
+  }
+  if (has('--web')) return runWeb();
+  return runDesktop();
+})();
