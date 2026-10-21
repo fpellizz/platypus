@@ -721,12 +721,12 @@ function relayoutPeople() {
   }
   for (const n of npcs) {
     n.alpha = 0;
-    const tgt = n.npc === 'cat' ? n.target : n.npc === 'pest' && n.state === 'chat' ? n.victim : null;
+    const tgt = n.npc === 'cat' ? n.target : n.npc === 'pest' && n.state === 'chat' ? n.victim : n.npc === 'hr' && n.state !== 'exit' ? n.victim : null;
     const d = tgt && deskFor(tgt);
     let place;
     if (d) place = besidePlace(d);
     else if (n.npc === 'cat') { place = poufPlace(); n.target = null; }
-    else { place = { kind: 'elevator' }; if (n.npc === 'pest' && n.state !== 'exit') n.state = 'seek'; if (n.npc === 'janitor' && n.state === 'clean') n.lines = (n.lines || 0); }
+    else { place = { kind: 'elevator' }; if (n.npc === 'pest' && n.state !== 'exit') n.state = 'seek'; if (n.npc === 'janitor' && n.state === 'clean') n.lines = (n.lines || 0); if (n.npc === 'hr') { n.state = 'exit'; n.speech = ''; n.last = ''; const v = chars.get(n.victim); if (v) v.scoldedUntil = 0; } }
     const end = place.kind === 'spot' ? place.inner[place.inner.length - 1] : { x: ELEV.x, y: ELEV.y };
     n.x = end.x; n.y = end.y - (n.npc === 'cat' && !d ? 6 : 0); n.path = []; n.place = place;
     if (n.npc === 'cat') n.phase = d ? 'keys' : 'nap';
@@ -1111,6 +1111,7 @@ function tickErrand(c, t) {
   const from = { kind: 'board', key: e.key };
   c.errand = null;
   c.last = '';
+  if (e.type === 'rage') c.scoldPending = true; // appena torna a sedersi passano le risorse umane
   if (e.after === 'leave' || !desk) {
     c.phase = 'leave'; c.purpose = 'desk';
     c.path = routeBetween(from, { kind: 'elevator' });
@@ -1273,7 +1274,7 @@ function updateBoardLabels() {
   }
 }
 
-// ================================================================ personaggi extra: gatto, collega fastidioso, pulizie
+// ================================================================ personaggi extra: gatto, collega fastidioso, pulizie, risorse umane
 // Non sono agenti: girano per il piano, ma il gatto ha un compito vero (si sdraia sulla
 // tastiera di chi è bloccato) e il collega... beh, fa il collega.
 const PEST_LINES = [
@@ -1284,6 +1285,9 @@ const PEST_LINES = [
   tr('Scusa, mi rispieghi tutto dall\'inizio?'), tr('Lo mettiamo in agenda per lunedì?'), tr('Ah, ma stai lavorando? Allora dopo…'),
 ];
 const JANITOR_LINES = [tr('Alzate i piedi, passo l\'aspirapolvere.'), tr('Chi ha lasciato le tazze sulla scrivania?'), tr('Qui è tutto un cavo…'), tr('Le lavagne non si buttano per terra!')];
+// le risorse umane: una battuta dopo l'altra, alla scrivania di chi ha buttato giù la lavagna
+const HR_LINES = [tr('Buongiorno, sono delle Risorse Umane.'), tr('Abbattere le lavagne non è un comportamento consono all\'ufficio.'), tr('Le lascio un richiamo formale. Firmi qui, grazie.')];
+const HR_LINE_MS = 3200;
 let npcs = [];
 let npcT0 = 0;
 
@@ -1330,11 +1334,13 @@ function routeBetweenPlaces(a, b) {
 function makeNpc(kind) {
   const base = { key: 'npc:' + kind, id: 'npc:' + kind, npc: kind, x: ELEV.x, y: ELEV.y, path: [], dir: 'down', moving: false, alpha: 0, phase: 'walk', state: 'enter', until: 0, speech: '', role: 'npc' };
   if (kind === 'pest') return { ...base, look: { skin: '#E8B48A', hair: '#5F3A1E', style: 3, shirt: '#d4a017', pants: C.navy, acc: 'bowtie', accColor: C.red, pattern: 'stripes' }, data: { status: 'idle', kind: 'sub', type: tr('collega'), name: (snap.settings && snap.settings.pestName) || 'Ugo Pignolo', action: '', description: '' } };
+  if (kind === 'hr') return { ...base, look: { skin: '#F2C6A0', hair: '#2B1B17', style: 1, shirt: C.white, pants: C.navy, acc: 'badge', accColor: C.plum, pattern: 'vest' }, data: { status: 'idle', kind: 'sub', type: tr('risorse umane'), name: hrName(), action: '', description: '' } };
   if (kind === 'janitor') return { ...base, look: { skin: '#C68A5E', hair: '#C2C3C7', style: 0, shirt: '#2c6e49', pants: '#1f3d2b', acc: 'cap', accColor: '#2c6e49', pattern: 'plain' }, data: { status: 'idle', kind: 'sub', type: tr('pulizie'), name: tr('Pulizie'), action: '', description: '' } };
   // gatto
   return { ...base, x: 0, y: 0, alpha: 1, state: 'nap', place: null };
 }
 
+function hrName() { return (snap.settings && snap.settings.hrName) || 'Dott.ssa Ornella Rigore'; }
 function dropNpc(n) { if (n && n.el) { n.el.remove(); n.el = null; } npcs = npcs.filter(x => x !== n); }
 function resetNpcs() { for (const n of npcs) if (n.el) n.el.remove(); npcs = []; npcT0 = performance.now(); }
 
@@ -1398,6 +1404,38 @@ function updateNpcs(dt, t) {
   }
   if (jan && jan.speech && t > jan.until) { jan.speech = ''; jan.last = ''; }
   if (jan && jan.fading) { jan.alpha -= dt * 2.5; if (jan.alpha <= 0) dropNpc(jan); }
+  // risorse umane: chi ha buttato giù una lavagna, appena è di nuovo seduto, riceve un richiamo
+  let hr = npcs.find(n => n.npc === 'hr');
+  if (!settingOn('hrEnabled')) {
+    if (hr) { dropNpc(hr); hr = null; }
+    for (const c of chars.values()) { c.scoldPending = false; c.scoldedUntil = 0; }
+  } else if (!hr && t > (updateNpcs.hrBack || 0)) {
+    const v = [...chars.values()].find(c => c.scoldPending && c.phase === 'seated' && !c.errand && !c.fadeOut && deskFor(c.id));
+    if (v) {
+      v.scoldPending = false;
+      hr = makeNpc('hr'); hr.victim = v.id; hr.place = { kind: 'elevator' }; hr.state = 'go'; npcs.push(hr);
+      openElevator(); npcGo(hr, besidePlace(deskFor(v.id)));
+    }
+  }
+  if (hr && hr.data) hr.data.name = hrName();
+  if (hr && !hr.path.length) {
+    const v = chars.get(hr.victim);
+    const there = v && v.phase === 'seated' && deskFor(v.id); // si è alzato o è andato via: niente richiamo
+    if (hr.state === 'go') {
+      if (!there) { hr.state = 'exit'; npcGo(hr, { kind: 'elevator' }); if (v) v.scoldPending = true; } // ci riprova quando torna a sedersi
+      else {
+        hr.state = 'scold'; hr.line = 0; hr.until = t + HR_LINE_MS; hr.dir = 'right';
+        hr.speech = HR_LINES[0]; hr.last = '';
+        v.scoldedUntil = t + HR_LINE_MS * HR_LINES.length + 500;
+      }
+    } else if (hr.state === 'scold' && (!there || t > hr.until)) { // se si alza smette subito di parlare alla sedia
+      if (!there || ++hr.line >= HR_LINES.length) { hr.speech = ''; hr.last = ''; hr.state = 'exit'; npcGo(hr, { kind: 'elevator' }); if (v) v.scoldedUntil = 0; }
+      else { hr.speech = HR_LINES[hr.line]; hr.last = ''; hr.until = t + HR_LINE_MS; }
+    } else if (hr.state === 'exit') {
+      hr.fading = true;
+    }
+  }
+  if (hr && hr.fading) { hr.alpha -= dt * 2.5; if (hr.alpha <= 0) { dropNpc(hr); updateNpcs.hrBack = t + 4000; } }
   // movimento
   for (const n of npcs) {
     if (n.alpha < 1 && !n.fading) n.alpha = Math.min(1, n.alpha + dt * 3);
@@ -2075,6 +2113,7 @@ function drawChar(c, t) {
     R(x - 7, by - 1 + sw, 2, 2, L.skin); R(x + 5, by - 1 - sw, 2, 2, L.skin);
     if (c.phase === 'break') { R(x + 5, by - 4, 3, 3, C.white); if (((t / 500) | 0) % 2) R(x + 6, by - 7, 1, 2, '#ffffff88'); }
     if (c.npc === 'pest') { R(x + 5, by - 4, 3, 3, C.white); R(x + 6, by - 3, 1, 1, C.red); } // la sua tazza
+    if (c.npc === 'hr') { R(x + 5, by - 6, 4, 6, C.brown); R(x + 6, by - 5, 2, 4, C.white); R(x + 6, by - 7, 2, 1, C.lgrey); } // la cartellina dei richiami
   } else {
     R(x - 7, by - 7, 2, 4, L.shirt); R(x + 5, by - 7, 2, 4, L.shirt);
     if (a.status === 'thinking' && c.kind === 'main') R(x + 2, by - 10, 2, 3, L.skin);
@@ -2118,6 +2157,10 @@ function drawChar(c, t) {
   if (c.annoyedUntil > t) { // nuvoletta grigia: il collega è passato a disturbare
     R(ix - 1, iy - 3, 7, 3, C.dgrey); R(ix, iy - 4, 5, 1, C.dgrey); if (((t / 200) | 0) % 2) R(ix + 2, iy, 1, 2, C.yellow);
   }
+  if (c.scoldedUntil > t) { // goccia di sudore: le risorse umane lo stanno richiamando
+    const d = ((t / 250) | 0) % 3;
+    R(ix + 1, iy - 2 + d, 2, 3, C.blue); R(ix + 2, iy - 3 + d, 1, 1, C.blue);
+  }
   if (c.alert && a.status !== 'waiting' && ((t / 600) | 0) % 2) { R(ix, iy - 2, 5, 9, C.orange); R(ix + 1, iy - 1, 3, 1, C.black); R(ix + 3, iy, 1, 2, C.black); R(ix + 2, iy + 2, 1, 1, C.black); R(ix + 2, iy + 5, 1, 1, C.black); }
   if (a.status === 'done' || a.finished) { R(ix, iy, 1, 1, C.green); R(ix + 1, iy + 1, 1, 1, C.green); R(ix + 2, iy, 1, 1, C.green); R(ix + 3, iy - 1, 1, 1, C.green); R(ix + 4, iy - 2, 1, 1, C.green); }
   ctx.globalAlpha = 1;
@@ -2154,7 +2197,7 @@ function updateBalloon(c) {
   if (c.phase === 'break') action = tr('Pausa caffè: tocca a te!');
   if (c.errand) action = ERRAND_TEXT[c.errand.type] + (c.phase === 'errand' ? '' : '…');
   if (c.alert && status !== 'waiting') action = c.alert.text.replace(/^[A-Z0-9-]+ /, '').replace(/^: /, '');
-  if (c.npc) action = c.speech || (c.npc === 'pest' ? tr('Passavo di qui…') : tr('Pulizie in corso'));
+  if (c.npc) action = c.speech || (c.npc === 'pest' ? tr('Passavo di qui…') : c.npc === 'hr' ? tr('Ha un richiamo da consegnare') : tr('Pulizie in corso'));
   if (c.cheerUntil > performance.now() && c.role === 'boss' && floor && floor.s.party) action = tr('Evviva! {text}', { text: floor.s.party.text });
   const ap = c.npc ? null : approvalFor(c.sid, c.id);
   const sig = status + '|' + action + '|' + a.description + '|' + a.type + '|' + a.seq + '|' + (focusId === c.id) + '|' + !!c.alert + '|' + (c.errand ? c.errand.type : '') + '|' + (ap ? ap.id : '');
@@ -2567,12 +2610,14 @@ const SETTINGS_CHECKS = [
   ['alertsNotify', tr('Notifiche di Windows anche per gli avvisi')],
   ['pestEnabled', tr('Collega fastidioso in giro per i piani')],
   ['catEnabled', tr('Gatto dell\'ufficio')],
+  ['hrEnabled', tr('Risorse umane: richiamo a chi butta giù una lavagna')],
   ['partyEnabled', tr('Feste per commit, PR e test verdi')],
   ['nightAuto', tr('Luci basse e pulizie dopo le 20')],
   ['outfits', tr('Vestiti per feste, stagioni e meteo')],
 ];
 const SETTINGS_TEXTS = [
   ['pestName', tr('Nome del collega fastidioso'), 40, tr('Il nome del collega fastidioso')],
+  ['hrName', tr('Nome della responsabile HR'), 40, tr('Il nome della responsabile delle risorse umane')],
   ['weatherCity', tr('Città per il meteo'), 40, tr('Serve per ombrelli, sciarpe e pioggia alle finestre. Vuoto = niente meteo.')],
   ['claudeDirs', tr('Altre cartelle di Claude Code'), 600, tr('Altre installazioni di Claude Code da seguire, per esempio dentro WSL o un altro utente (cartelle .claude, separate da ;). Le distribuzioni WSL accese si trovano da sole.')],
   ['coworkDirs', tr('Cartelle Cowork extra'), 600, tr('Se le sessioni Cowork non compaiono, indica qui la cartella (anche più di una, separate da ;).')],

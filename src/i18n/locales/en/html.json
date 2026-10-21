@@ -134,5 +134,7 @@
   "MAPPA DELLA REALTÀ": "MAP OF REALITY",
   ": dalla scheda di un agente (o con il tasto G) vedi il suo territorio, cioè i file che conosce con la nebbia su tutto il resto, e la sua traiettoria in uno spazio a 7 dimensioni che dice come sta lavorando.": ": from an agent's card (or with the G key) you see its territory, the files it knows with fog over everything else, and its trajectory in a 7-dimensional space that shows how it is working.",
   "PLATY": "PLATY",
-  "PUS": "PUS"
+  "PUS": "PUS",
+  "Risorse umane": "Human resources",
+  ": chi butta giù una lavagna, appena torna alla scrivania, riceve la visita della responsabile HR e un richiamo formale.": ": whoever knocks over a whiteboard gets a visit from the HR manager and a formal warning as soon as they are back at their desk."
 }

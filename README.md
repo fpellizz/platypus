@@ -13,7 +13,7 @@ Runs on **Windows, macOS and Linux**: clone it with git and launch it, no instal
 - **Permissions from the balloon**: when an agent asks for permission, answer **YES / ALWAYS / NO** right in the office, or in the terminal as usual.
 - **Costs and tokens** per floor and over time, **alerts** (stuck agent, repeated errors, budget exceeded), **archive and replay** of past sessions, **daily report**.
 - **Map of reality** for each agent: the territory it knows (with fog over what it has never seen), its trajectory through a 7-dimensional space, the context bubble and the task's north star (experimental).
-- **Office life**: the cat on the keyboard of whoever is stuck, the annoying coworker (you pick the name), parties for commits and green tests, night time, outfits for holidays and weather, age and superhero capes based on model and effort.
+- **Office life**: the cat on the keyboard of whoever is stuck, the annoying coworker (you pick the name), HR scolding whoever knocks over a whiteboard, parties for commits and green tests, night time, outfits for holidays and weather, age and superhero capes based on model and effort.
 - **Italian and English**, with a structure ready for more languages.
 
 What's new in each version is in [CHANGELOG.md](CHANGELOG.md).

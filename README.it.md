@@ -13,7 +13,7 @@ Gira su **Windows, macOS e Linux**: si clona da git e si lancia, senza installer
 - **Permessi dal fumetto**: quando un agente chiede un permesso rispondi **SÌ / SEMPRE / NO** direttamente nell'ufficio, oppure nel terminale come sempre.
 - **Costi e token** per piano e nel tempo, **avvisi** (agente fermo, errori di fila, budget superato), **archivio e replay** delle sessioni passate, **report giornaliero**.
 - **Mappa della realtà** di ogni agente: il territorio che conosce (con la nebbia su ciò che non ha mai visto), la sua traiettoria in uno spazio a 7 dimensioni, la bolla del contesto e la stella polare del compito (sperimentale).
-- **Vita d'ufficio**: il gatto sulla tastiera di chi è bloccato, il collega fastidioso (il nome lo scegli tu), feste per commit e test verdi, notte, vestiti per feste e meteo, età e mantelli da supereroe secondo modello ed effort.
+- **Vita d'ufficio**: il gatto sulla tastiera di chi è bloccato, il collega fastidioso (il nome lo scegli tu), le risorse umane che richiamano chi butta giù una lavagna, feste per commit e test verdi, notte, vestiti per feste e meteo, età e mantelli da supereroe secondo modello ed effort.
 - **Italiano e inglese**, con una struttura pronta per altre lingue.
 
 Le novità di ogni versione sono in [CHANGELOG.it.md](CHANGELOG.it.md).

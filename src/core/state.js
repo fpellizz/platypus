@@ -36,6 +36,8 @@ const DEFAULT_SETTINGS = {
   pricePerMTok: 4,      // stima quando Claude Code non ha ancora scritto il costo ($ per milione di token "equivalenti input")
   pestEnabled: true,    // il collega fastidioso
   pestName: 'Ugo Pignolo',
+  hrEnabled: true,      // le risorse umane richiamano chi butta giù una lavagna
+  hrName: 'Dott.ssa Ornella Rigore',
   nightAuto: true,      // luci basse e pulizie dopo le 20
   catEnabled: true,
   partyEnabled: true,
@@ -155,7 +157,7 @@ class OfficeState extends EventEmitter {
       else if (typeof DEFAULT_SETTINGS[k] === 'string') {
         const str = String(v ?? '').replace(/[<>"]/g, '').trim().slice(0, LONG_STRINGS[k] || 40);
         if (k === 'lang') { this.settings.lang = str === 'auto' || i18n.LANGS[str] ? str : 'auto'; continue; }
-        this.settings[k] = str || (k === 'pestName' ? DEFAULT_SETTINGS[k] : '');
+        this.settings[k] = str || (k === 'pestName' || k === 'hrName' ? DEFAULT_SETTINGS[k] : '');
       }
       else { const n = Number(v); if (Number.isFinite(n) && n >= 0) this.settings[k] = n; }
     }
