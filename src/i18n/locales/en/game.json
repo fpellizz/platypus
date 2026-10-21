@@ -287,5 +287,13 @@
  "Non sono riuscito a salvare": "Couldn't save",
  "Lingua dell'ufficio": "Office language",
  "Lingua": "Language",
- "Automatica (come il sistema)": "Automatic (same as the system)"
+ "Automatica (come il sistema)": "Automatic (same as the system)",
+ "Buongiorno, sono delle Risorse Umane.": "Good morning, I'm from Human Resources.",
+ "Abbattere le lavagne non è un comportamento consono all'ufficio.": "Knocking over whiteboards is not appropriate office behaviour.",
+ "Le lascio un richiamo formale. Firmi qui, grazie.": "I'm leaving you a formal warning. Sign here, please.",
+ "risorse umane": "human resources",
+ "Risorse umane: richiamo a chi butta giù una lavagna": "Human resources: a warning for whoever knocks over a whiteboard",
+ "Nome della responsabile HR": "HR manager's name",
+ "Il nome della responsabile delle risorse umane": "The human resources manager's name",
+ "Ha un richiamo da consegnare": "Has a warning to deliver"
 }
