@@ -79,7 +79,8 @@ Starts the engine in the same process, opens a frameless window on `http://127.0
 - mini mode;
 - start at login (`src/autostart.js`);
 - on Windows, the Start menu entry with the AppUserModelID for notifications;
-- on macOS, the app menu and the Dock icon.
+- on macOS, the app menu and the Dock icon;
+- on Linux, the app_id/`desktopName` `platypus` (matches `platypus.desktop`) and Wayland: natively there is no always-on-top or window position, so `getPin()` returns `false` and `PIN` offers to restart with `--ozone-platform=x11` (XWayland). The choice is `x11` in the app's `config.json`, also read by `scripts/launch.js`.
 
 ## Moving to Tauri (or another shell)
 

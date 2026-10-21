@@ -1,11 +1,14 @@
 'use strict';
 // Integrazione con il sistema operativo: porta in primo piano la finestra di una sessione,
 // riprende una sessione chiusa in un nuovo terminale, apre la cartella del progetto.
-// Windows: PowerShell (incluso nel sistema) · macOS: ps + osascript · Linux: /proc + xdotool/wmctrl.
+// Windows: PowerShell (incluso nel sistema) · macOS: ps + osascript · Linux: /proc + xdotool/wmctrl (X11)
+// o il compositor Wayland (KWin via DBus, hyprctl, swaymsg).
 // Nessun dato esce dal computer.
 
 const { spawn, execFile } = require('child_process');
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { tr } = require('../i18n');
 
 const WIN_NAMES = {
@@ -81,8 +84,10 @@ async function focusSession({ pid, kind, cwd }) {
     const r = await run('osascript', ['-e', `tell application ${JSON.stringify(app)} to activate`]);
     return r.err ? { ok: false, reason: tr('Non riesco ad attivare {app}', { app }) } : { ok: true, how: 'app', app };
   }
-  // Linux (X11): xdotool o wmctrl; su Wayland i programmi non possono attivare finestre altrui
+  // Linux: su Wayland lo chiediamo al compositor (KWin, Hyprland, Sway); su X11 xdotool o wmctrl
   const chain = await ancestors(pid);
+  const wl = isWayland() ? await focusWayland(chain) : null; // null = compositor non supportato
+  if (wl) return { ok: true, how: 'window' };
   if (await has('xdotool')) {
     for (const p of chain) {
       const r = await run('xdotool', ['search', '--onlyvisible', '--pid', String(p)], 3000);
@@ -98,9 +103,62 @@ async function focusSession({ pid, kind, cwd }) {
     }
   }
   if (kind === 'ide' && safeDir(cwd) && await has('code')) { spawn('code', [cwd], { detached: true, stdio: 'ignore' }).unref(); return { ok: true, how: 'ide' }; }
-  return { ok: false, reason: process.env.WAYLAND_DISPLAY && !process.env.DISPLAY
-    ? tr('Su Wayland non è possibile portare in primo piano la finestra di un altro programma.')
+  if (wl === false) return { ok: false, reason: tr('Non ho trovato la finestra di questa sessione.') };
+  return { ok: false, reason: isWayland()
+    ? tr('Su Wayland posso portare in primo piano le finestre solo con KDE Plasma, Hyprland o Sway.')
     : tr('Per portare in primo piano la finestra installa xdotool o wmctrl.') };
+}
+
+function isWayland() { return process.env.XDG_SESSION_TYPE === 'wayland' || !!process.env.WAYLAND_DISPLAY; }
+
+// Wayland: le app non possono attivare finestre altrui, il compositor sì
+// (true = attivata, false = finestra non trovata, null = compositor non supportato)
+async function focusWayland(chain) {
+  const pids = chain.filter(p => Number.isInteger(p) && p > 1);
+  if (process.env.HYPRLAND_INSTANCE_SIGNATURE && await has('hyprctl')) {
+    for (const p of pids) if ((await run('hyprctl', ['dispatch', 'focuswindow', 'pid:' + p], 3000)).out === 'ok') return true;
+    return false;
+  }
+  if (process.env.SWAYSOCK && await has('swaymsg')) {
+    // -r: sempre JSON; senza finestre corrispondenti "success" è false
+    for (const p of pids) if (/"success":\s*true/.test((await run('swaymsg', ['-r', `[pid=${p}]`, 'focus'], 3000)).out)) return true;
+    return false;
+  }
+  if (/KDE/i.test(process.env.XDG_CURRENT_DESKTOP || '') && await has('gdbus')) return pids.length ? focusKWin(pids) : false;
+  return null;
+}
+
+// KDE Plasma: uno script KWin caricato via DBus attiva la prima finestra di uno dei pid.
+// Se la trova si scarica da solo: così sappiamo se ha funzionato.
+async function focusKWin(pids) {
+  const name = 'platypus-focus-' + process.pid + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  // XDG_RUNTIME_DIR è privato dell'utente; in /tmp un altro utente potrebbe metterci un link
+  const file = path.join(process.env.XDG_RUNTIME_DIR || os.tmpdir(), name + '.js');
+  const dbus = (obj, method, ...args) => run('gdbus', ['call', '--session', '--dest', 'org.kde.KWin', '--object-path', obj, '--method', method, ...args], 3000);
+  fs.writeFileSync(file, `
+const pids = ${JSON.stringify(pids)};
+const list = workspace.windowList ? workspace.windowList() : workspace.clientList();
+let hit = null;
+for (const p of pids) { hit = list.find(w => w.pid === p && w.normalWindow); if (hit) break; }
+if (hit) {
+  if (hit.minimized) hit.minimized = false;
+  if ('activeWindow' in workspace) workspace.activeWindow = hit; else workspace.activeClient = hit;
+  callDBus('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting', 'unloadScript', ${JSON.stringify(name)});
+}
+`, { flag: 'wx', mode: 0o600 });
+  try {
+    const id = Number((/-?\d+/.exec((await dbus('/Scripting', 'org.kde.kwin.Scripting.loadScript', file, name)).out) || [])[0]);
+    if (!(id >= 0)) return false;
+    // Plasma 6: /Scripting/Script<id> · Plasma 5: /<id>
+    if ((await dbus('/Scripting/Script' + id, 'org.kde.kwin.Script.run')).err) await dbus('/' + id, 'org.kde.kwin.Script.run');
+    // run è asincrono: aspettiamo un po' che lo script giri prima di dire "non trovata"
+    for (let i = 0; i < 4; i++) {
+      await new Promise(r => setTimeout(r, 150));
+      if (/false/.test((await dbus('/Scripting', 'org.kde.kwin.Scripting.isScriptLoaded', name)).out)) return true;
+    }
+    await dbus('/Scripting', 'org.kde.kwin.Scripting.unloadScript', name);
+    return false;
+  } finally { try { fs.rmSync(file, { force: true }); } catch {} }
 }
 
 function has(cmd) { return run(process.platform === 'win32' ? 'where.exe' : 'which', [cmd], 3000).then(r => !r.err && !!r.out); }

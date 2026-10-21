@@ -79,7 +79,8 @@ Avvia il motore nello stesso processo, apre una finestra senza cornice su `http:
 - modalità mini;
 - avvio all'accesso (`src/autostart.js`);
 - su Windows, voce nel menu Start con l'AppUserModelID per le notifiche;
-- su macOS, menu dell'app e icona nel Dock.
+- su macOS, menu dell'app e icona nel Dock;
+- su Linux, app_id/`desktopName` `platypus` (combacia con `platypus.desktop`) e Wayland: in nativo non esistono primo piano e posizione della finestra, quindi `getPin()` restituisce `false` e `PIN` propone di riavviare con `--ozone-platform=x11` (XWayland). La scelta è `x11` nel `config.json` dell'app, letto anche da `scripts/launch.js`.
 
 ## Passare a Tauri (o a un altro guscio)
 

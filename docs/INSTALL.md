@@ -53,6 +53,19 @@ cd ~/platypus
 sudo apt install libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libnotify4
 ```
 
+### Wayland
+
+On a Wayland session (GNOME, KDE Plasma, Hyprland, Sway…) the window runs as a **native Wayland** app: sharp at any scaling, with the right icon in the taskbar. Wayland does not let apps stay above other windows or choose their own position, so:
+
+| Feature | Native Wayland | XWayland compatibility |
+|---|---|---|
+| Always on top (`PIN`, mini mode) | not available | yes |
+| Remembered position, mini strip in the corner | the compositor places the window | yes |
+| Remembered size | yes | yes |
+| "GO TO WINDOW" | KDE Plasma, Hyprland, Sway (GNOME: no) | KDE Plasma, Hyprland, Sway (GNOME: X11 windows with `xdotool`/`wmctrl`) |
+
+To get always-on-top back, press `PIN` (Platypus offers to restart) or tick *XWayland compatibility* in the tray icon menu. The choice is remembered; to force it for one launch: `PLATYPUS_X11=1 ./start.sh` (or `PLATYPUS_X11=0` for native Wayland).
+
 ## First launch
 
 The launcher (`scripts/launch.js`, used by `start.cmd`, `start.command` and `start.sh`) does four things:
@@ -110,7 +123,8 @@ To uninstall:
 | `npm ci` hangs on first launch | Network or proxy (see above). Meanwhile, use `npm run web`. |
 | Linux: "SUID sandbox helper binary … not configured correctly" | Some distributions (e.g. Ubuntu 24.04) block Electron's sandbox. The launcher retries with `--no-sandbox` automatically. To always use it: `PLATYPUS_NO_SANDBOX=1 ./start.sh`. |
 | Linux: no tray icon | GNOME needs the *AppIndicator and KStatusNotifierItem Support* extension. |
-| Linux: "GO TO WINDOW" does nothing | On X11, install `xdotool` or `wmctrl`. On Wayland, apps can't raise other apps' windows. |
+| Linux: "GO TO WINDOW" does nothing | On X11, install `xdotool` or `wmctrl`. On Wayland it works on KDE Plasma (via KWin, needs `gdbus`), Hyprland and Sway; GNOME does not allow it. |
+| Linux (Wayland): `PIN` does not stay on top / the window does not reopen where it was | Wayland does not allow it: use *XWayland compatibility* (see [Wayland](#wayland)). |
 | "Port 47800 is already in use" | The office is already open, or another app uses the port. Run `PLATYPUS_PORT=47810 npm start`, then reinstall the hooks. |
 | Windows: no notifications | Launch once so the Start menu entry exists, and check *Settings → System → Notifications*. |
 
