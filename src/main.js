@@ -10,14 +10,22 @@ const { tr, trn, money } = require('./i18n');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 app.setAppUserModelId('com.platypus.desktop');
+// Linux: app_id su Wayland e WM_CLASS su X11 = "platypus", come il file platypus.desktop (icona e raggruppamento)
+if (process.platform === 'linux') app.setDesktopName('platypus.desktop');
 
 const ROOT = path.join(__dirname, '..');
+// Wayland nativo (default di Electron 38): niente "sempre in primo piano" né posizione della finestra.
+// Con --ozone-platform=x11 l'app gira in XWayland e li riavrebbe.
+const OZONE = app.commandLine.getSwitchValue('ozone-platform');
+// senza WAYLAND_DISPLAY (es. via ssh con DISPLAY) Electron usa comunque X11
+const WAYLAND_SESSION = process.platform === 'linux' && !!process.env.WAYLAND_DISPLAY;
+const WAYLAND = WAYLAND_SESSION && OZONE !== 'x11' && OZONE !== 'headless';
 let win = null, tray = null, core = null, quitting = false;
 let counts = { sessions: 0, agents: 0, busy: 0, waiting: 0 };
 
 // ---------------------------------------------------------------- configurazione
 const cfgFile = () => path.join(app.getPath('userData'), 'config.json');
-let cfg = { pin: true, bounds: null, askedHooks: false, showCowork: true, notify: true };
+let cfg = { pin: true, bounds: null, askedHooks: false, showCowork: true, notify: true, x11: false };
 function loadCfg() {
   // preferenze della finestra salvate quando l'app si chiamava Agent Office
   let file = cfgFile();
@@ -36,11 +44,12 @@ function createWindow() {
   win = new BrowserWindow({
     width: b.width || 980,
     height: b.height || 620,
-    x: b.x, y: b.y,
+    // su Wayland la posizione la decide il compositor
+    x: WAYLAND ? undefined : b.x, y: WAYLAND ? undefined : b.y,
     minWidth: 380, minHeight: 260,
     frame: false,
     backgroundColor: '#0b0a12',
-    alwaysOnTop: !!cfg.pin,
+    alwaysOnTop: pinState(),
     title: 'Platypus',
     icon: path.join(ROOT, 'build', 'icon.png'),
     show: false,
@@ -51,10 +60,16 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
-  win.setAlwaysOnTop(!!cfg.pin, 'floating');
+  win.setAlwaysOnTop(pinState(), 'floating');
   win.loadURL(`http://127.0.0.1:${core.port}/`);
   win.once('ready-to-show', () => win.show());
-  const remember = () => { if (!widgetMode && !win.isMinimized() && !win.isMaximized()) { cfg.bounds = win.getBounds(); saveCfg(); } };
+  const remember = () => {
+    if (widgetMode || win.isMinimized() || win.isMaximized()) return;
+    const nb = win.getBounds();
+    // su Wayland x/y valgono sempre 0: teniamo quelli salvati (servono in XWayland/X11)
+    cfg.bounds = WAYLAND ? { ...cfg.bounds, width: nb.width, height: nb.height } : nb;
+    saveCfg();
+  };
   win.on('moved', remember);
   win.on('resized', remember);
   win.on('focus', () => win.flashFrame(false));
@@ -72,10 +87,42 @@ function showWindow() {
 }
 
 function setPin(on) {
+  if (WAYLAND && on) { offerX11(); buildTrayMenu(); return false; }
   cfg.pin = !!on; saveCfg();
   if (win && !widgetMode) win.setAlwaysOnTop(cfg.pin, 'floating');
   buildTrayMenu();
   return cfg.pin;
+}
+// su Wayland nativo il primo piano non esiste: il PIN risulta spento
+function pinState() { return WAYLAND ? false : !!cfg.pin; }
+
+// ---------------------------------------------------------------- Wayland / XWayland
+// Riavvia l'app con o senza --ozone-platform=x11 (lo switch va dato all'avvio, non si cambia a caldo).
+function setX11(on) {
+  cfg.x11 = !!on;
+  clearTimeout(saveTimer);
+  try { fs.writeFileSync(cfgFile(), JSON.stringify(cfg, null, 2)); } catch {}
+  const argv = process.argv.slice(1), args = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--ozone-platform') { i++; continue; } // forma in due parti
+    if (!argv[i].startsWith('--ozone-platform=')) args.push(argv[i]);
+  }
+  if (on) args.push('--ozone-platform=x11');
+  process.env.PLATYPUS_X11 = on ? '1' : '0'; // il processo nuovo eredita l'ambiente: vince la scelta appena fatta
+  quitting = true;
+  if (core) core.stop(); // app.exit non passa da before-quit: salva le statistiche e chiude i permessi in attesa
+  app.relaunch({ args });
+  app.exit(0);
+}
+async function offerX11() {
+  const r = await dialog.showMessageBox(win, {
+    type: 'question', title: 'Platypus',
+    buttons: [tr('Riavvia in XWayland'), tr('Annulla')], defaultId: 0, cancelId: 1,
+    message: tr('Su Wayland "sempre in primo piano" non è disponibile'),
+    detail: tr('Wayland non permette alle app di restare sopra le altre finestre né di scegliere la propria posizione.') + '\n\n' +
+      tr('Posso riavviare Platypus in modalità compatibilità (XWayland), dove funzionano. Puoi tornare a Wayland nativo dal menu dell\'icona.'),
+  });
+  if (r.response === 0) { cfg.pin = true; setX11(true); }
 }
 
 // ---------------------------------------------------------------- modalità widget
@@ -90,12 +137,14 @@ function setWidget(on) {
     const wa = screen.getDisplayMatching(normalBounds).workArea;
     win.setMinimumSize(300, 120);
     const w = 380, h = 150;
-    win.setBounds({ x: wa.x + wa.width - w - 12, y: wa.y + wa.height - h - 12, width: w, height: h });
+    // su Wayland niente angolo né primo piano: la striscia resta dove la mette il compositor
+    if (WAYLAND) win.setSize(w, h);
+    else win.setBounds({ x: wa.x + wa.width - w - 12, y: wa.y + wa.height - h - 12, width: w, height: h });
     win.setAlwaysOnTop(true, 'floating');
   } else {
     win.setMinimumSize(380, 260);
-    if (normalBounds) win.setBounds(normalBounds);
-    win.setAlwaysOnTop(!!cfg.pin, 'floating');
+    if (normalBounds) { if (WAYLAND) win.setSize(normalBounds.width, normalBounds.height); else win.setBounds(normalBounds); }
+    win.setAlwaysOnTop(pinState(), 'floating');
   }
 }
 
@@ -175,7 +224,9 @@ function buildTrayMenu() {
     { label: tr('Sessioni: {s}  ·  Agenti: {a}', { s: counts.sessions, a: counts.agents }) + (counts.waiting ? '  ·  ' + trn('{n} in attesa', '{n} in attesa', counts.waiting) : ''), enabled: false },
     { type: 'separator' },
     { label: tr('Mostra l\'ufficio'), click: showWindow },
-    { label: tr('Sempre in primo piano'), type: 'checkbox', checked: !!cfg.pin, click: m => setPin(m.checked) },
+    { label: tr('Sempre in primo piano'), type: 'checkbox', checked: pinState(), click: m => setPin(m.checked) },
+    // solo in una sessione Wayland: scegli tra Wayland nativo e XWayland (riavvia l'app)
+    ...(WAYLAND_SESSION ? [{ label: tr('Compatibilità XWayland (primo piano e posizione)'), type: 'checkbox', checked: OZONE === 'x11', click: m => setX11(m.checked) }] : []),
     { label: tr('Modalità demo'), type: 'checkbox', checked: core.demo.on, click: m => { m.checked ? core.demo.start() : core.demo.stop(); } },
     { label: tr('Notifiche per i permessi'), type: 'checkbox', checked: cfg.notify !== false, click: m => { cfg.notify = m.checked; saveCfg(); } },
     { label: tr('Mostra le sessioni Cowork'), type: 'checkbox', checked: cfg.showCowork !== false, click: m => { cfg.showCowork = m.checked; saveCfg(); core.state.setIncludeCowork(m.checked); } },
@@ -298,8 +349,8 @@ function ensureStartMenuShortcut() {
 // ---------------------------------------------------------------- IPC dalla pagina
 ipcMain.on('office:minimize', () => win && win.minimize());
 ipcMain.on('office:close', () => { quitting = true; app.quit(); });
-ipcMain.handle('office:togglePin', () => setPin(!cfg.pin));
-ipcMain.handle('office:getPin', () => !!cfg.pin);
+ipcMain.handle('office:togglePin', () => setPin(!pinState()));
+ipcMain.handle('office:getPin', () => pinState());
 ipcMain.on('office:setWidget', (_e, on) => setWidget(!!on));
 ipcMain.on('office:counts', (_e, c) => {
   const prevWaiting = counts.waiting;
@@ -326,6 +377,9 @@ function setupMac() {
 app.whenReady().then(async () => {
   setupMac();
   loadCfg();
+  // scelta XWayland salvata (o PLATYPUS_X11=1): lo switch va dato all'avvio, quindi ci riavviamo con lui
+  // (scripts/launch.js lo passa già; questo copre avvio automatico, collegamenti e app compilata)
+  if (WAYLAND && process.env.PLATYPUS_X11 !== '0' && (cfg.x11 || process.env.PLATYPUS_X11 === '1') && !process.env.PLATYPUS_SNAPSHOT) return setX11(true);
   core = startCore({ includeCowork: cfg.showCowork !== false, fetch: (u, o) => net.fetch(u, o), osLocale: app.getLocale() }); // net.fetch usa il proxy di sistema
   try {
     await core.ready;

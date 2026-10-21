@@ -41,10 +41,16 @@
   "{n} nuovi avvisi": "{n} new alerts",
   "La porta {port} è già occupata. Platypus è forse già aperto (anche in modalità browser)?": "Port {port} is already in use. Is Platypus already open (maybe in browser mode)?",
   "Errore di avvio: {error}": "Startup error: {error}",
-  "Su Wayland non è possibile portare in primo piano la finestra di un altro programma.": "On Wayland, apps cannot bring another program's window to the front.",
+  "Su Wayland posso portare in primo piano le finestre solo con KDE Plasma, Hyprland o Sway.": "On Wayland I can bring windows to the front only on KDE Plasma, Hyprland or Sway.",
   "Per portare in primo piano la finestra installa xdotool o wmctrl.": "To bring the window to the front, install xdotool or wmctrl.",
   "Notifiche per i permessi": "Notifications for permission requests",
   "Avvia all'accesso al computer": "Start when I log in",
   "Altre cartelle di Claude Code": "Other Claude Code folders",
-  "Altre installazioni di Claude Code da seguire, per esempio dentro WSL o un altro utente (cartelle .claude, separate da ;). Le distribuzioni WSL accese si trovano da sole.": "Other Claude Code installations to follow, for example inside WSL or another user (.claude folders, separated by ;). Running WSL distributions are found automatically."
+  "Altre installazioni di Claude Code da seguire, per esempio dentro WSL o un altro utente (cartelle .claude, separate da ;). Le distribuzioni WSL accese si trovano da sole.": "Other Claude Code installations to follow, for example inside WSL or another user (.claude folders, separated by ;). Running WSL distributions are found automatically.",
+  "Riavvia in XWayland": "Restart in XWayland",
+  "Annulla": "Cancel",
+  "Su Wayland \"sempre in primo piano\" non è disponibile": "\"Always on top\" is not available on Wayland",
+  "Wayland non permette alle app di restare sopra le altre finestre né di scegliere la propria posizione.": "Wayland does not let apps stay above other windows or choose their own position.",
+  "Posso riavviare Platypus in modalità compatibilità (XWayland), dove funzionano. Puoi tornare a Wayland nativo dal menu dell'icona.": "I can restart Platypus in compatibility mode (XWayland), where both work. You can switch back to native Wayland from the tray icon menu.",
+  "Compatibilità XWayland (primo piano e posizione)": "XWayland compatibility (always on top and position)"
 }

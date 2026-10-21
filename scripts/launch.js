@@ -78,6 +78,14 @@ function canShowWindow() {
   if (process.platform !== 'linux') return true;
   return !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
 }
+// Wayland: compatibilità XWayland scelta dal menu dell'icona (config.json dell'app) o con PLATYPUS_X11=1
+function wantsX11() {
+  if (process.platform !== 'linux' || !process.env.WAYLAND_DISPLAY) return false;
+  if (process.env.PLATYPUS_X11 === '1') return true;
+  if (process.env.PLATYPUS_X11 === '0') return false;
+  const conf = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'Platypus', 'config.json');
+  try { return JSON.parse(fs.readFileSync(conf, 'utf8')).x11 === true; } catch { return false; }
+}
 function startElectron(extra, background) {
   const exe = electronPath();
   try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch {}
@@ -108,6 +116,7 @@ async function runDesktop() {
   const background = has('--background');
   const extra = [];
   if (process.platform === 'linux' && process.env.PLATYPUS_NO_SANDBOX === '1') extra.push('--no-sandbox');
+  if (wantsX11()) extra.push('--ozone-platform=x11');
   let r = await startElectron(extra, background);
   // alcune distribuzioni Linux (es. Ubuntu 24.04 con AppArmor) bloccano la sandbox di Electron scaricato da npm
   if (r.exited && process.platform === 'linux' && !extra.includes('--no-sandbox') && /sandbox/i.test(logText())) {

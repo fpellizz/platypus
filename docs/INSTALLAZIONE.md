@@ -87,6 +87,19 @@ sudo apt install libgtk-3-0 libnss3 libasound2t64 libgbm1 libxss1 libnotify4
 ```
 (su versioni meno recenti `libasound2` al posto di `libasound2t64`).
 
+### Wayland
+
+In una sessione Wayland (GNOME, KDE Plasma, Hyprland, Sway…) la finestra gira come app **Wayland nativa**: nitida con qualsiasi scala e con l'icona giusta nella barra delle applicazioni. Wayland però non permette alle app di restare sopra le altre finestre né di scegliere la propria posizione:
+
+| Funzione | Wayland nativo | Compatibilità XWayland |
+|---|---|---|
+| Sempre in primo piano (`PIN`, mini mode) | non disponibile | sì |
+| Posizione ricordata, striscia mini nell'angolo | decide il compositor | sì |
+| Dimensioni ricordate | sì | sì |
+| "VAI ALLA FINESTRA" | KDE Plasma, Hyprland, Sway (GNOME no) | KDE Plasma, Hyprland, Sway (GNOME: finestre X11 con `xdotool`/`wmctrl`) |
+
+Per riavere il primo piano premi `PIN` (Platypus propone di riavviarsi) oppure spunta *Compatibilità XWayland* nel menu dell'icona. La scelta viene ricordata; per forzarla a un singolo avvio: `PLATYPUS_X11=1 ./start.sh` (o `PLATYPUS_X11=0` per Wayland nativo).
+
 ## Primo avvio
 
 Il lanciatore (`scripts/launch.js`, chiamato da `start.cmd`, `start.command` e `start.sh`):
@@ -180,7 +193,8 @@ Se il repository è privato, git chiede di autenticarti. Il modo più semplice �
 | Il primo avvio si ferma durante `npm ci` | Rete o proxy: vedi [Proxy aziendale](#proxy-aziendale). Intanto puoi usare `npm run web`. |
 | Linux: "The SUID sandbox helper binary was found, but is not configured correctly" | Su alcune distribuzioni (es. Ubuntu 24.04) la sandbox di Electron scaricato da npm è bloccata. Il lanciatore riparte da solo con `--no-sandbox`; per farlo sempre: `PLATYPUS_NO_SANDBOX=1 ./start.sh`. |
 | Linux: niente icona nella barra | GNOME ha bisogno dell'estensione *AppIndicator and KStatusNotifierItem Support*. La finestra funziona comunque. |
-| Linux: "VAI ALLA FINESTRA" non fa nulla | Su X11 installa `xdotool` o `wmctrl`. Su Wayland non è possibile portare in primo piano la finestra di un altro programma. |
+| Linux: "VAI ALLA FINESTRA" non fa nulla | Su X11 installa `xdotool` o `wmctrl`. Su Wayland funziona con KDE Plasma (tramite KWin, serve `gdbus`), Hyprland e Sway; GNOME non lo permette. |
+| Linux (Wayland): il `PIN` non tiene la finestra sopra / non si riapre dov'era | Wayland non lo permette: usa la *Compatibilità XWayland* (vedi [Wayland](#wayland)). |
 | "La porta 47800 è già occupata" | Platypus è già aperto (anche in modalità browser), oppure un altro programma usa la porta: `PLATYPUS_PORT=47810 npm start` e reinstalla gli hook. |
 | Windows: niente notifiche | Avvia l'app almeno una volta dal lanciatore, così crea la voce nel menu Start (Windows mostra le notifiche solo per le app che ne hanno una), e controlla *Impostazioni → Sistema → Notifiche*. |
 | Non vedo le mie sessioni | Controlla che Claude Code scriva in `~/.claude` (o nella cartella di `CLAUDE_CONFIG_DIR`). Le sessioni vengono mostrate se attive negli ultimi 25 minuti; le altre sono nell'archivio (tasto `A`). |
