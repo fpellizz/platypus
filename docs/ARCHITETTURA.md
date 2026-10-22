@@ -66,6 +66,7 @@ Pagina statica: `index.html`, `style.css`, `game.js` (palazzo, piani, fumetti), 
 | Funzione | Uso |
 |---|---|
 | `minimize()`, `close()` | pulsanti della barra del titolo |
+| `toggleMaximize()`, `isMaximized()`, `onMaximized(cb)` | tutto schermo: il pulsante segue anche gli ingrandimenti fatti fuori dalla pagina |
 | `togglePin()`, `getPin()` | sempre in primo piano |
 | `setCounts({sessions, agents, busy, waiting})` | aggiorna l'icona nella barra e fa lampeggiare la finestra |
 | `setWidget(on)` | modalità mini (finestra piccola sempre in primo piano) |

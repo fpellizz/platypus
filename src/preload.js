@@ -4,6 +4,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('officeApp', {
   minimize: () => ipcRenderer.send('office:minimize'),
   close: () => ipcRenderer.send('office:close'),
+  toggleMaximize: () => ipcRenderer.invoke('office:toggleMaximize'),
+  isMaximized: () => ipcRenderer.invoke('office:isMaximized'),
+  onMaximized: cb => ipcRenderer.on('office:maximized', (_e, on) => cb(!!on)),
   togglePin: () => ipcRenderer.invoke('office:togglePin'),
   getPin: () => ipcRenderer.invoke('office:getPin'),
   setCounts: c => ipcRenderer.send('office:counts', c),

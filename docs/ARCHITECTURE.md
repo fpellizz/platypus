@@ -66,6 +66,7 @@ Static page: `index.html`, `style.css`, `game.js` (building, floors, balloons), 
 | Function | Use |
 |---|---|
 | `minimize()`, `close()` | title bar buttons |
+| `toggleMaximize()`, `isMaximized()`, `onMaximized(cb)` | full screen: the button also follows maximizing done outside the page |
 | `togglePin()`, `getPin()` | always on top |
 | `setCounts({sessions, agents, busy, waiting})` | updates the tray icon and flashes the window |
 | `setWidget(on)` | mini mode (small window, always on top) |
