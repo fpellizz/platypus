@@ -83,10 +83,19 @@ function agoText(t) {
 }
 
 // ================================================================ dati dal server
+// l'ultimo stato ricevuto, senza l'orologio: serve a riconoscere gli aggiornamenti a vuoto
+let lastPayload = null;
 function connect() {
   const es = new EventSource('/events');
   es.onmessage = ev => {
     $('#offline').hidden = true;
+    // ogni 2 secondi il server ripubblica lo stato anche se non è successo niente: l'unica
+    // differenza è "now", che la pagina non usa mai (qui si guarda l'orologio del browser).
+    // Se il resto è identico non c'è niente da rifare. Se il formato non è quello atteso il
+    // replace non aggancia e si ricalcola come sempre: meglio un giro in più che dati vecchi.
+    const key = ev.data.replace(/^\{"now":\d+,/, '{');
+    if (key !== ev.data && key === lastPayload) return;
+    lastPayload = key;
     try { snap = JSON.parse(ev.data); } catch { return; }
     if (snap.lang && snap.lang !== LANG) { location.reload(); return; } // lingua cambiata nelle opzioni
     reconcile();
@@ -385,9 +394,18 @@ function followWaiting() {
 }
 
 // ================================================================ dimensioni
+// La scala cresce con la finestra, ma senza gradini: a scatti, attraversare una soglia
+// ridimensionando faceva saltare tutto il piano del 25-50% di colpo. Alle larghezze qui sotto
+// il valore è quello di sempre, in mezzo si interpola.
+const SCALE_STOPS = [[360, 1], [600, 1.5], [900, 2], [1500, 2.5], [2400, 3]];
 function baseScale() {
   const sw = stage.clientWidth || 800;
-  const t = sw >= 1500 ? 2.5 : sw >= 900 ? 2 : sw >= 600 ? 1.5 : 1;
+  let t = SCALE_STOPS[0][1];
+  for (let i = 1; i < SCALE_STOPS.length; i++) {
+    const [w0, s0] = SCALE_STOPS[i - 1], [w1, s1] = SCALE_STOPS[i];
+    if (sw <= w0) break;
+    t = sw >= w1 ? s1 : s0 + (s1 - s0) * (sw - w0) / (w1 - w0);
+  }
   return Math.max(0.75, Math.min(4, t * zoom));
 }
 function applySize(contentH) {
@@ -401,7 +419,9 @@ function applySize(contentH) {
   wrap.style.width = cw + 'px'; wrap.style.height = chh + 'px';
   const fpx = Math.max(12, Math.min(22, Math.round(scale * 7)));
   document.documentElement.style.setProperty('--bubble-font', fpx + 'px');
-  document.body.classList.toggle('tiny', scale < 1.4);
+  // con una soglia secca la classe sfarfalla quando la scala si ferma sul confine: qui
+  // si accende sotto 1.35 e si spegne solo sopra 1.45
+  document.body.classList.toggle('tiny', scale < (document.body.classList.contains('tiny') ? 1.45 : 1.35));
 }
 
 // ================================================================ atrio
@@ -1061,10 +1081,20 @@ function label(key, cls) {
   el._used = true;
   return el;
 }
+// Leggere offsetWidth/offsetHeight forza un layout sincrono. Facendolo dentro placeLabel()
+// si alternavano scrittura e lettura per ogni etichetta, e il browser rifaceva il layout a
+// ogni giro — anche 60 volte al secondo, perché updateBoardLabels() gira a ogni frame.
+// Qui si scrive soltanto, e le misure si prendono tutte insieme in measurePlaced().
+let rectQueue = [];
 function placeLabel(el, x, y, maxW) {
   if (maxW) el.style.maxWidth = Math.round(maxW) + 'px';
   el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
-  el._rect = { x, y, w: el.offsetWidth, h: el.offsetHeight };
+  el._rect = { x, y, w: 0, h: 0 };
+  rectQueue.push(el);
+}
+function measurePlaced() {
+  for (const el of rectQueue) { const r = el._rect; if (r) { r.w = el.offsetWidth; r.h = el.offsetHeight; } }
+  rectQueue.length = 0;
 }
 function setHtml(el, html) { if (el._h !== html) { el.innerHTML = html; el._h = html; } }
 
@@ -2566,6 +2596,7 @@ function sweepBalloons() {
 }
 
 function placeBalloons(items) {
+  measurePlaced(); // unico punto che usa _rect: le misure servono fresche solo qui
   items.sort((a, b) => b.prio - a.prio || a.c.y - b.c.y);
   const placed = [...labels.values()].filter(e => e.style.display !== 'none').map(e => e._rect).filter(Boolean);
   const maxX = W * scale, gap = 3;
