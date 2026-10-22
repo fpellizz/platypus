@@ -105,8 +105,8 @@ const THEMES = {
 function themeOf(s) { return THEMES[s && s.wing === 'cowork' ? 'cowork' : 'code']; }
 function sessionById(id) { return sessions().find(s => s.id === id) || null; }
 function floorNo(id) { return sessions().findIndex(s => s.id === id) + 1; }
-// vista corrente: null = atrio, 'archive' = seminterrato, 'replay' = piano in replay, altrimenti id di sessione
-function isSpecial(v) { return v === 'archive' || v === 'replay'; }
+// vista corrente: null = atrio, 'archive' = seminterrato, 'relax' = area relax, 'replay' = piano in replay, altrimenti id di sessione
+function isSpecial(v) { return v === 'archive' || v === 'replay' || v === 'relax'; }
 function getSession(sid) {
   if (viewSid === 'replay' && replayFrame && replayFrame.session && replayFrame.session.id === sid) return replayFrame.session;
   return sessionById(sid);
@@ -212,6 +212,7 @@ function resetFloor() {
   instantPlace = true;
   boards = newBoards();
   resetNpcs();
+  dropRelax();
   confetti = [];
   hideInfo();
   $('#roomlist').hidden = true;
@@ -234,7 +235,7 @@ function reconcile() {
     const saved = load('view', 'lobby');
     const list = sessions();
     let target = null;
-    if (saved === 'archive') target = 'archive';
+    if (saved === 'archive' || saved === 'relax') target = saved;
     else if (saved !== 'lobby' && sessionById(saved)) target = saved;
     else if (list.length === 1) target = list[0].id;
     viewSid = target; viewReady = true;
@@ -249,15 +250,16 @@ function reconcile() {
   updateElevator();
   updateTicker();
   maybeSound();
-  const archive = viewSid === 'archive', inReplay = viewSid === 'replay';
-  const s = inReplay ? (replayFrame && replayFrame.session) : (viewSid && !archive ? sessionById(viewSid) : null);
-  const lobby = !s && !archive && !inReplay;
+  const archive = viewSid === 'archive', inReplay = viewSid === 'replay', inRelax = viewSid === 'relax';
+  const s = inReplay ? (replayFrame && replayFrame.session) : (viewSid && !archive && !inRelax ? sessionById(viewSid) : null);
+  const lobby = !s && !archive && !inReplay && !inRelax;
   $('#board').hidden = !lobby || sessions().length === 0;
   $('#empty').hidden = !lobby || sessions().length > 0;
   $('#archive').hidden = !archive;
   $('#vcr').hidden = !inReplay;
   $('#empty-cowork').textContent = coworkNote();
   if (archive) { layoutLobby(); refreshArchive(); }
+  else if (inRelax) layoutRelax();
   else if (inReplay) { if (s) { layoutFloor(s); syncChars(s); } updateVcr(); }
   else if (lobby) { layoutLobby(); updateBoard(); }
   else { layoutFloor(s); syncChars(s); }
@@ -375,7 +377,7 @@ function followWaiting() {
       if (a.status === 'waiting' && !a.finished) {
         if (!waitingSeen.has(k)) {
           waitingSeen.add(k);
-          if (follow && s.id !== viewSid && !transitioning) goTo(s.id);
+          if (follow && s.id !== viewSid && !transitioning && !(window.arcadeOpen && arcadeOpen())) goTo(s.id);
         }
       } else waitingSeen.delete(k);
     }
@@ -517,8 +519,9 @@ function drawLobby(t) {
   R(0, 0, W, 2, '#3a4a7a'); R(0, WALL_H - 5, W, 5, '#5F574F'); R(0, WALL_H - 5, W, 1, '#83769C');
   // finestre
   let wi = 0;
+  const door = relaxDoor();
   for (let x = 12; x + 46 < W / 2 - 50; x += 92, wi++) drawWindow(x, 13, t, wi);
-  for (let x = W - 58; x - 46 > W / 2 + 50; x -= 92, wi++) drawWindow(x, 13, t, wi);
+  for (let x = W - 58; x - 2 > door.x + door.w + 6; x -= 92, wi++) drawWindow(x, 13, t, wi); // a destra si fermano prima della porta del relax
   // ascensori al centro
   const cx = Math.round(W / 2);
   [['CODE', -40, C.green], ['COWORK', 8, C.pink]].forEach(([lbl, dx, col]) => {
@@ -538,6 +541,7 @@ function drawLobby(t) {
   drawDecor(16, H - 40); drawDecor(W - 32, H - 40);
   if (receptionist) drawChar(receptionist, t);
   drawEmployeePortrait(t);
+  drawDoor(door, 'RELAX', C.green, t);
   const dx = cx - 48, dy = H - 30;
   R(dx, dy, 96, 6, '#e0a070'); R(dx, dy + 6, 96, 18, '#8a4a2a'); R(dx + 4, dy + 9, 88, 1, '#a35a32');
   pixText('RECEPTION', dx + 30, dy + 13, C.yellow, 4);
@@ -561,6 +565,284 @@ function drawEmployeePortrait(t) {
 function drawPlant(x, y) {
   R(x + 2, y + 14, 10, 10, C.brown); R(x + 1, y + 14, 12, 2, '#c46a40');
   R(x + 5, y + 2, 4, 12, C.dgreen); R(x, y + 4, 6, 4, C.green); R(x + 8, y, 6, 5, C.green); R(x + 3, y - 4, 6, 6, C.dgreen); R(x + 9, y + 7, 5, 4, C.dgreen);
+}
+
+// ================================================================ area relax: la caffetteria del piano terra
+// Si entra dalla porta RELAX dell'atrio (o con R). Niente agenti: impiegati qualunque che prendono
+// il caffè, si siedono, giocano ai cabinati. Uno mangia sempre una banana, e chi gli passa vicino commenta.
+const ARCADES = [
+  { id: 'pacman', name: 'PAC-MAN', col: C.yellow, body: '#1D2B53', scr: '#000000' },
+  { id: 'tetris', name: 'TETRIS', col: C.red, body: '#7E2553', scr: '#0b1430' },
+  { id: 'invaders', name: 'SPACE INVADERS', col: C.green, body: '#2b2b3a', scr: '#000000' },
+];
+const PAC_ICON = ['01110', '11100', '11000', '11100', '01110'];
+const INV_ICON = ['0100010', '0111110', '1101011', '1111111', '1010101'];
+const RELAX_NAMES = ['Gianni', 'Marisa', 'Franco', 'Loredana', 'Sandro', 'Patrizia', 'Walter', 'Rossella'];
+const RELAX_DEPTS = ['contabilita', 'vendite', 'marketing', 'acquisti', 'logistica', 'segreteria', 'legale', 'magazzino'];
+const BANANA_LINE = tr('Beh, almeno una te la sei mangiata...');
+let relax = null;
+
+// porta dell'area relax in atrio, a destra del quadro del dipendente della settimana
+function relaxDoor() { return { x: Math.round(W / 2) + 104, y: WALL_H - 36, w: 22, h: 36 }; }
+function drawDoor(d, sign, col, t) {
+  R(d.x - 2, d.y - 2, d.w + 4, d.h + 2, '#5F574F');
+  R(d.x, d.y, d.w, d.h, '#8a4a2a'); R(d.x + 3, d.y + 14, d.w - 6, 18, '#a35a32');
+  // oblò con la luce calda: ogni tanto di là passa qualcuno
+  R(d.x + 6, d.y + 3, d.w - 12, 8, '#ffd27a');
+  const p = ((t / 70) | 0) % 140, a = Math.max(d.x + 6, d.x + 2 + p), b = Math.min(d.x + d.w - 6, d.x + 6 + p);
+  if (b > a) R(a, d.y + 5, b - a, 6, '#5a3a2a');
+  R(d.x + d.w - 5, d.y + 19, 2, 3, C.yellow);
+  const tw = sign.length * 4;
+  R(d.x + d.w / 2 - tw / 2 - 2, d.y - 11, tw + 3, 8, C.black);
+  pixText(sign, d.x + d.w / 2 - tw / 2, d.y - 10, Math.sin(t / 700) > -0.95 ? col : shade(col, 0.4), 4);
+}
+
+function dropRelax() { if (relax) for (const n of relax.npcs) if (n.el) n.el.remove(); relax = null; }
+
+function layoutRelax() {
+  layoutLobby(); // stessa scala e altezza fissa dell'atrio
+  const sig = W + 'x' + H;
+  if (relax && relax.sig === sig) return;
+  dropRelax();
+  // da sinistra: uscita, angolo bar, finestre; a destra divano, tre cabinati, divano
+  const lane = WALL_H + 28, kx = 34, bx = W - 152;
+  const spots = [];
+  const sofas = [{ x: bx, col: C.orange }, { x: bx + 110, col: C.lav }];
+  for (const s of sofas) for (const dx of [10, 24]) spots.push({ kind: 'sofa', x: s.x + dx, y: WALL_H + 10, ex: s.x + dx, dir: 'down' });
+  const cabs = ARCADES.map((a, i) => ({ ...a, x: bx + 40 + i * 23, top: WALL_H - 26, player: null }));
+  for (const c of cabs) spots.push({ kind: 'arcade', cab: c, x: c.x + 9, y: WALL_H + 24, ex: c.x + 9, dir: 'up' });
+  spots.push({ kind: 'coffee', x: kx + 16, y: WALL_H + 22, ex: kx + 16, dir: 'up' });
+  // tavolini: due sedie dietro ognuno, si entra e si esce dai corridoi laterali
+  // al massimo 4 x 3, larghi e distribuiti su tutta l'altezza
+  const y0 = lane + 30, rows = Math.max(1, Math.min(3, Math.floor((H - 24 - y0) / 48) + 1));
+  const gapY = rows > 1 ? Math.min(64, Math.floor((H - 24 - y0) / (rows - 1))) : 0;
+  const cols = Math.max(2, Math.min(4, Math.floor((W - 40) / 90))), pitch = (W - 40) / cols;
+  const tables = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const tx = Math.round(20 + pitch * (c + 0.5)), ty = y0 + r * gapY;
+    tables.push({ x: tx, y: ty });
+    spots.push({ kind: 'table', x: tx - 7, y: ty, ex: tx - 26, dir: 'down' }, { kind: 'table', x: tx + 7, y: ty, ex: tx + 26, dir: 'down' });
+  }
+  relax = { sig, lane, kx, bx, sofas, cabs, tables, spots, npcs: [], door: { x: 6, y: WALL_H - 36, w: 22, h: 36 } };
+  // più è larga la stanza, più gente in pausa
+  const n = Math.max(5, Math.min(8, 5 + Math.floor((W - 360) / 140)));
+  const t = performance.now(), off = (Math.random() * RELAX_NAMES.length) | 0;
+  const seats = spots.filter(s => s.kind === 'table' || s.kind === 'sofa').sort(() => Math.random() - 0.5);
+  const arcade = spots.filter(s => s.kind === 'arcade');
+  for (let i = 0; i < n; i++) {
+    // quello della banana sta sul divano accanto ai cabinati, dove passano tutti
+    const banana = i === 0;
+    const spot = banana ? spots.find(s => s.kind === 'sofa' && s.x === bx + 24) : i === 1 ? arcade[(Math.random() * arcade.length) | 0] : seats.find(s => !s.by && s.x !== bx + 24);
+    if (!spot) break;
+    const key = 'relax:' + i + ':' + ((Math.random() * 1e6) | 0);
+    const play = spot.kind === 'arcade';
+    const c = { key, id: key, npc: 'relax', x: spot.x, y: spot.y, path: [], dir: spot.dir, moving: false, alpha: 1, phase: play ? 'stand' : 'seated',
+      look: makeLook(key, { kind: 'sub', type: RELAX_DEPTS[(off + i) % RELAX_DEPTS.length] }),
+      data: { status: 'idle', kind: 'sub', name: banana ? 'Rag. Bruno' : RELAX_NAMES[(off + i) % RELAX_NAMES.length], type: '', action: '', description: '' },
+      spot, act: play ? 'play' : 'sit', until: t + 2000 + Math.random() * 10000, speech: '', speechUntil: 0, quipAt: 0, banana, t0: t - Math.random() * 10000,
+      doing: banana ? tr('Mangia una banana') : play ? tr('Gioca a {game}', { game: spot.cab.name }) : tr('Si gode la pausa') };
+    spot.by = c;
+    if (play) spot.cab.player = c;
+    relax.npcs.push(c);
+  }
+}
+
+// finito quello che faceva, l'impiegato sceglie la prossima cosa e ci va passando dal corridoio davanti al bancone
+function relaxGo(n) {
+  const from = n.spot || { x: n.x, y: n.y, ex: n.x };
+  if (n.spot) { n.spot.by = null; if (n.spot.cab) n.spot.cab.player = null; }
+  const free = k => relax.spots.filter(s => s.kind === k && !s.by && s !== from);
+  const playing = relax.spots.filter(s => s.kind === 'arcade' && s.by).length;
+  const r = Math.random();
+  let act = n.cup ? 'sit' : r < 0.3 ? 'coffee' : r < 0.45 && playing < 2 ? 'play' : r < 0.85 ? 'sit' : 'walk';
+  const opts = act === 'sit' ? [...free('table'), ...free('sofa')] : act === 'coffee' ? free('coffee') : act === 'play' ? free('arcade') : [];
+  if (!opts.length) act = 'walk';
+  let to;
+  if (act === 'walk') { const x = Math.round(30 + Math.random() * (W - 60)); to = { kind: 'walk', x, y: relax.lane, ex: x, dir: 'down' }; }
+  else to = opts[(Math.random() * opts.length) | 0];
+  const L = relax.lane;
+  n.path = [{ x: from.ex, y: from.y }, { x: from.ex, y: L }, { x: to.ex, y: L }, { x: to.ex, y: to.y }, { x: to.x, y: to.y }];
+  n.spot = to; to.by = n; n.act = act;
+  n.phase = n.cup ? 'break' : 'stand'; // con la tazza in mano
+  n.doing = act === 'sit' ? (n.cup ? tr('Si porta il caffè al tavolo') : tr('Cerca un posto')) : act === 'coffee' ? tr('Va a prendere un caffè') : act === 'play' ? tr('Va a giocare a {game}', { game: to.cab.name }) : tr('Fa due passi');
+}
+function relaxArrive(n, t) {
+  const s = n.spot;
+  n.dir = s.dir;
+  if (n.act === 'sit') { n.phase = 'seated'; n.until = t + 8000 + Math.random() * 12000; n.doing = tr('Si gode la pausa'); }
+  else if (n.act === 'coffee') { n.phase = 'stand'; n.act = 'brew'; n.until = t + 3000 + Math.random() * 2000; n.doing = tr('Aspetta il caffè'); }
+  else if (n.act === 'play') { n.phase = 'stand'; s.cab.player = n; n.until = t + 9000 + Math.random() * 9000; n.doing = tr('Gioca a {game}', { game: s.cab.name }); }
+  else { n.phase = 'stand'; n.until = t + 1500 + Math.random() * 2500; n.doing = tr('Si guarda intorno'); }
+}
+
+function updateRelax(dt, t) {
+  const b = relax.npcs.find(n => n.banana);
+  for (const n of relax.npcs) {
+    if (n.path.length) {
+      const p = n.path[0], dx = p.x - n.x, dy = p.y - n.y, d = Math.hypot(dx, dy), step = SPEED * 0.8 * dt;
+      n.moving = true;
+      if (d > 0.01) { if (Math.abs(dx) > Math.abs(dy)) n.dir = dx > 0 ? 'right' : 'left'; else n.dir = dy > 0 ? 'down' : 'up'; }
+      if (d <= step) { n.x = p.x; n.y = p.y; n.path.shift(); if (!n.path.length) { n.moving = false; relaxArrive(n, t); } }
+      else { n.x += dx / d * step; n.y += dy / d * step; }
+    } else if (!n.banana && t > n.until) {
+      if (n.act === 'brew') n.cup = true; else if (n.act === 'sit') n.cup = false; // caffè pronto / caffè finito
+      relaxGo(n);
+    }
+    // chi passa vicino a quello della banana non resiste al commento (una volta ogni tanto)
+    if (b && n !== b && n.moving && t > n.quipAt && Math.hypot(n.x - b.x, n.y - b.y) < 24) { n.quipAt = t + 25000; n.speech = BANANA_LINE; n.speechUntil = t + 3200; n.last = ''; }
+    if (n.speech && t > n.speechUntil) { n.speech = ''; n.last = ''; }
+  }
+}
+
+function drawIcon(rows, x, y, col) { rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) if (r[i] === '1') R(x + i, y + j, 1, 1, col); }); }
+// schermo del cabinato in modalità attract: va più veloce se qualcuno sta giocando
+function drawArcadeScreen(c, x, y, t) {
+  const k = (t / (c.player ? 90 : 160)) | 0;
+  const P = (px, py, w, h, col) => { const a = Math.max(px, x), b = Math.min(px + w, x + 12); if (b > a) R(a, py, b - a, h, col); };
+  if (c.id === 'pacman') {
+    R(x, y + 1, 12, 1, C.blue); R(x, y + 8, 12, 1, C.blue);
+    const px = x + (k % 20) - 4;
+    for (let i = 1; i < 12; i += 2) if (x + i > px + 2) R(x + i, y + 4, 1, 1, C.white);
+    P(px, y + 3, 3, 3, C.yellow); if (k % 2) P(px + 2, y + 4, 1, 1, c.scr);
+    P(px - 5, y + 3, 3, 3, C.red); P(px - 5, y + 3, 1, 1, C.white);
+  } else if (c.id === 'tetris') {
+    const cols = [C.red, C.blue, C.yellow, C.green, C.lav];
+    for (let i = 0; i < 12; i++) { if (i !== 7) R(x + i, y + 9, 1, 1, cols[i % 5]); if (i < 4 || i > 8) R(x + i, y + 8, 1, 1, cols[(i + 2) % 5]); }
+    const py = k % 7, px = x + 3 + ((k / 7 | 0) % 3) * 2;
+    R(px, y + py, 3, 1, C.orange); R(px + 1, y + py + 1, 1, 1, C.orange);
+  } else {
+    const o = (k % 4) - 1;
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) P(x + 1 + i * 3 + o, y + 1 + r * 2, 2, 1, r ? C.green : C.pink);
+    const cx = x + 4 + ((k / 8 | 0) % 4);
+    R(cx, y + 9, 3, 1, C.green); R(cx + 1, y + 8 - (k % 7), 1, 1, C.white);
+  }
+}
+function drawCabinet(c, t) {
+  const x = c.x, y = c.top, play = !!c.player;
+  ctx.globalAlpha = 0.12 + 0.06 * Math.sin(t / 300 + x); R(x - 3, y - 2, 24, 26, c.col); ctx.globalAlpha = 1; // bagliore sul muro
+  R(x, y, 18, 38, c.body); R(x, y, 2, 38, shade(c.body, 0.7)); R(x + 16, y, 2, 38, shade(c.body, 0.7));
+  // insegna luminosa, una per gioco
+  R(x + 1, y + 1, 16, 7, C.black); R(x + 1, y + 7, 16, 1, c.col);
+  if (c.id === 'pacman') { drawIcon(PAC_ICON, x + 3, y + 2, C.yellow); R(x + 10, y + 4, 1, 1, C.white); R(x + 13, y + 4, 1, 1, C.white); }
+  else if (c.id === 'tetris') { R(x + 3, y + 2, 6, 2, C.red); R(x + 5, y + 4, 2, 2, C.red); R(x + 10, y + 4, 4, 2, C.blue); R(x + 12, y + 2, 4, 2, C.blue); }
+  else drawIcon(INV_ICON, x + 5, y + 2, C.green);
+  R(x + 2, y + 9, 14, 12, '#111'); R(x + 3, y + 10, 12, 10, c.scr);
+  drawArcadeScreen(c, x + 3, y + 10, t);
+  // comandi: il joystick si muove solo se c'è qualcuno
+  R(x - 1, y + 21, 20, 4, shade(c.body, 1.5)); R(x - 1, y + 25, 20, 1, C.black);
+  const j = play ? (((t / 180) | 0) % 3) - 1 : 0;
+  R(x + 5, y + 20, 1, 2, C.black); R(x + 4 + j, y + 18, 3, 2, C.red);
+  R(x + 10, y + 22, 2, 1, play && ((t / 150) | 0) % 2 ? C.white : C.yellow); R(x + 13, y + 22, 2, 1, C.blue);
+  // gettoniera
+  R(x + 6, y + 28, 6, 7, '#111'); R(x + 8, y + 30, 2, 2, ((t / 600) | 0) % 2 ? C.orange : '#7a4a00');
+  R(x, y + 37, 18, 1, C.black);
+}
+function drawKitchen(t) {
+  const x = relax.kx, at = relax.spots.find(s => s.kind === 'coffee').by;
+  const brewing = at && at.act === 'brew' && !at.moving;
+  // pensili e piastrelle
+  R(x, 14, 76, 13, '#c2a36b');
+  for (let i = 0; i < 4; i++) { R(x + 1 + i * 19, 15, 17, 11, '#d9b87a'); R(x + 9 + i * 19, 22, 2, 1, '#5a3a10'); }
+  for (let yy = 28; yy < WALL_H - 4; yy += 4) for (let xx = 0; xx < 76; xx += 4) R(x + xx, yy, 4, 4, ((xx + yy) / 4) % 2 ? '#e8e0d0' : '#9fd3c7');
+  // bancone
+  R(x, WALL_H - 4, 78, 4, '#d9d9d9'); R(x, WALL_H, 78, 14, '#8a4a2a');
+  for (let i = 1; i < 4; i++) R(x + i * 19, WALL_H + 2, 1, 10, '#6a3a20');
+  R(x, WALL_H + 13, 78, 1, C.black);
+  // macchina del caffè: lucina verde e tazzina sotto quando c'è qualcuno che aspetta
+  const m = x + 8;
+  R(m - 1, WALL_H - 24, 18, 3, C.dgrey); R(m, WALL_H - 21, 16, 17, '#5F574F');
+  R(m + 2, WALL_H - 19, 12, 3, brewing && ((t / 250) | 0) % 2 ? C.green : '#1a3a1a');
+  R(m + 6, WALL_H - 14, 4, 2, '#111');
+  if (brewing) { R(m + 6, WALL_H - 9, 4, 5, C.white); R(m + 7, WALL_H - 12 + ((t / 120) | 0) % 3, 1, 1, '#6b3a1a'); }
+  if (brewing || ((t / 2000) | 0) % 4 === 0) R(m + 13, WALL_H - 28 - ((t / 200) | 0) % 3, 1, 2, '#ffffff88');
+  [C.red, C.blue, C.yellow].forEach((c, i) => R(x + 30 + i * 4, WALL_H - 7, 3, 3, c));
+  // microonde e frigorifero
+  R(x + 46, WALL_H - 14, 18, 10, C.lgrey); R(x + 48, WALL_H - 12, 10, 6, '#222'); R(x + 60, WALL_H - 12, 2, 1, C.red);
+  R(x + 80, WALL_H - 34, 16, 48, C.white); R(x + 80, WALL_H - 14, 16, 1, C.lgrey);
+  R(x + 93, WALL_H - 30, 1, 10, C.dgrey); R(x + 93, WALL_H - 10, 1, 8, C.dgrey); R(x + 82, WALL_H - 32, 3, 3, C.pink);
+  R(x + 80, WALL_H + 13, 16, 1, C.black);
+}
+function drawSofaBack(s) { R(s.x, WALL_H - 10, 34, 14, shade(s.col, 0.75)); R(s.x, WALL_H - 10, 34, 2, s.col); }
+function drawSofaFront(s) {
+  const d = shade(s.col, 0.6);
+  R(s.x + 3, WALL_H + 4, 28, 6, s.col); R(s.x + 17, WALL_H + 4, 1, 6, d);
+  R(s.x, WALL_H + 10, 34, 4, d); R(s.x, WALL_H - 2, 4, 16, shade(s.col, 0.85)); R(s.x + 30, WALL_H - 2, 4, 16, shade(s.col, 0.85));
+  R(s.x + 2, WALL_H + 14, 2, 1, C.black); R(s.x + 30, WALL_H + 14, 2, 1, C.black);
+}
+function drawChairs(tb) { for (const dx of [-7, 7]) { R(tb.x + dx - 4, tb.y - 17, 8, 9, '#c46a40'); R(tb.x + dx - 4, tb.y - 17, 8, 1, '#e0a070'); R(tb.x + dx - 4, tb.y - 3, 1, 5, C.dgrey); R(tb.x + dx + 3, tb.y - 3, 1, 5, C.dgrey); } }
+function drawTable(tb) {
+  R(tb.x - 14, tb.y - 8, 28, 5, '#e0d6c4'); R(tb.x - 14, tb.y - 3, 28, 1, '#a89a80');
+  R(tb.x - 1, tb.y - 2, 2, 6, C.dgrey); R(tb.x - 5, tb.y + 4, 10, 1, C.dgrey);
+  R(tb.x - 1, tb.y - 10, 3, 2, C.white); // portatovaglioli
+}
+// la banana: si accorcia a morsi, resta la buccia, poi ne arriva un'altra
+function drawBanana(n, t) {
+  const x = Math.round(n.x), by = Math.round(n.y) - 6;
+  const p = ((t - n.t0) % 10000) / 10000;
+  const up = p < 0.7 && ((t / 700) | 0) % 3 === 0;
+  const hx = x + 5, hy = up ? by - 12 : by - 8;
+  if (p < 0.7) {
+    const len = 6 - Math.floor(p / 0.7 * 5), curve = [0, 0, 1, 1, 1, 0];
+    for (let i = 0; i < len; i++) { R(hx + curve[i], hy - 1 - i, 2, 1, C.yellow); R(hx + curve[i] + 1, hy - 1 - i, 1, 1, '#c9b800'); }
+    if (len === 6) R(hx, hy - 7, 1, 1, '#5a3a10');
+  } else if (p < 0.85) { R(hx - 1, hy - 3, 1, 3, C.yellow); R(hx + 2, hy - 3, 1, 3, C.yellow); R(hx, hy - 2, 2, 2, '#c9b800'); }
+  R(hx, hy, 2, 2, n.look.skin);
+}
+
+function drawRelax(t) {
+  const { kx, bx } = relax;
+  // pavimento a scacchi da tavola calda, parete color mattone
+  for (let y = WALL_H; y < H; y += 10) for (let x = 0; x < W; x += 10) R(x, y, 10, 10, (x + y - WALL_H) / 10 % 2 ? '#3e5a5e' : '#47676b');
+  R(0, 0, W, WALL_H, '#7a3b2e');
+  for (let x = 0; x < W; x += 8) R(x, 10, 1, WALL_H - 14, '#6c3328');
+  R(0, 0, W, 2, '#e0a070'); R(0, WALL_H - 5, W, 5, '#5F574F'); R(0, WALL_H - 5, W, 1, '#83769C');
+  let wi = 7;
+  for (let x = kx + 106; x + 46 <= bx - 6; x += 92, wi++) drawWindow(x, 16, t, wi);
+  const name = tr('CAFFETTERIA'), tw = name.length * 8, cx = Math.round(W / 2);
+  R(cx - tw / 2 - 5, 1, tw + 10, 12, '#120c22');
+  pixText(name, cx - tw / 2, 2, Math.sin(t / 800) > -0.96 ? C.orange : '#5a3a10', 7);
+  drawDoor(relax.door, tr('ATRIO'), C.yellow, t);
+  R(bx + 5, 28, 25, 9, C.black); pixText('RELAX', bx + 8, 30, Math.sin(t / 500) > -0.9 ? C.pink : '#5a2a44', 4);
+  drawClock(bx + 127, 32);
+  drawKitchen(t);
+  for (const s of relax.sofas) drawSofaBack(s);
+  for (const c of relax.cabs) drawCabinet(c, t);
+  // davanti e dietro: divani, sedie, tavolini e persone in ordine di profondità
+  const list = [];
+  for (const s of relax.sofas) list.push({ y: WALL_H + 10.5, draw: () => drawSofaFront(s) });
+  for (const tb of relax.tables) { list.push({ y: tb.y - 1, draw: () => drawChairs(tb) }); list.push({ y: tb.y + 0.5, draw: () => drawTable(tb) }); }
+  for (const n of relax.npcs) list.push({ y: n.phase === 'seated' ? n.y : n.y + 0.1, draw: () => {
+    drawChar(n, t);
+    if (n.banana) drawBanana(n, t);
+    else if (n.cup && n.phase === 'seated') { R(Math.round(n.x) + 5, Math.round(n.y) - 11, 3, 3, C.white); if (((t / 500) | 0) % 2) R(Math.round(n.x) + 6, Math.round(n.y) - 14, 1, 2, '#ffffff88'); }
+  } });
+  list.push({ y: H, draw: () => { drawDecor(4, H - 28); drawDecor(W - 18, H - 28); } });
+  list.sort((a, b) => a.y - b.y);
+  for (const d of list) d.draw();
+}
+
+// atrio e area relax: porte, cabinati e impiegati in pausa sotto il mouse
+function sceneHit(wx, wy) {
+  const inDoor = d => wx >= d.x - 2 && wx <= d.x + d.w + 2 && wy >= d.y - 12 && wy <= d.y + d.h;
+  if (!viewSid) { const d = relaxDoor(); return inDoor(d) ? { door: d, tip: tr('Area relax'), col: C.green } : null; }
+  if (viewSid !== 'relax' || !relax) return null;
+  if (inDoor(relax.door)) return { door: relax.door, tip: tr('Torna all\'atrio'), col: C.yellow, back: true };
+  for (const c of relax.cabs) if (wx >= c.x - 1 && wx <= c.x + 19 && wy >= c.top && wy <= c.top + 38) return { cab: c, tip: c.name, col: c.col };
+  for (const n of relax.npcs) if (Math.abs(wx - n.x) < 8 && wy < n.y + 2 && wy > n.y - 26) return { npc: n };
+  return null;
+}
+function showTip(h) {
+  if (!h || !h.tip) { const el = labels.get('scenetip'); if (el) el.style.display = 'none'; return; }
+  const el = label('scenetip', 'roomplate');
+  el.style.display = ''; el.style.background = h.col; el.style.zIndex = '1000';
+  setHtml(el, esc(h.tip));
+  const r = h.door || { x: h.cab.x, y: h.cab.top + 12, w: 18 };
+  placeLabel(el, Math.max(2, Math.min(W * scale - el.offsetWidth - 2, (r.x + r.w / 2) * scale - el.offsetWidth / 2)), Math.max(2, (r.y - 13) * scale - el.offsetHeight));
+}
+function playArcade(c) {
+  showTip(null);
+  if (window.openArcade) openArcade(c.id);
+  else toast(tr('Il cabinato è fuori servizio.'), false);
 }
 
 // ================================================================ piano: organigramma
@@ -2197,7 +2479,7 @@ function updateBalloon(c) {
   if (c.phase === 'break') action = tr('Pausa caffè: tocca a te!');
   if (c.errand) action = ERRAND_TEXT[c.errand.type] + (c.phase === 'errand' ? '' : '…');
   if (c.alert && status !== 'waiting') action = c.alert.text.replace(/^[A-Z0-9-]+ /, '').replace(/^: /, '');
-  if (c.npc) action = c.speech || (c.npc === 'pest' ? tr('Passavo di qui…') : c.npc === 'hr' ? tr('Ha un richiamo da consegnare') : tr('Pulizie in corso'));
+  if (c.npc) action = c.speech || (c.npc === 'pest' ? tr('Passavo di qui…') : c.npc === 'hr' ? tr('Ha un richiamo da consegnare') : c.npc === 'relax' ? c.doing : tr('Pulizie in corso'));
   if (c.cheerUntil > performance.now() && c.role === 'boss' && floor && floor.s.party) action = tr('Evviva! {text}', { text: floor.s.party.text });
   const ap = c.npc ? null : approvalFor(c.sid, c.id);
   const sig = status + '|' + action + '|' + a.description + '|' + a.type + '|' + a.seq + '|' + (focusId === c.id) + '|' + !!c.alert + '|' + (c.errand ? c.errand.type : '') + '|' + (ap ? ap.id : '');
@@ -2260,6 +2542,7 @@ function sweepBalloons() {
   const live = new Set();
   for (const c of chars.values()) if (c.el) live.add(c.el);
   for (const n of npcs) if (n.el) live.add(n.el);
+  if (relax) for (const n of relax.npcs) if (n.el) live.add(n.el);
   for (const el of overlay.querySelectorAll('.balloon')) if (!live.has(el)) el.remove();
 }
 
@@ -2369,20 +2652,31 @@ function renderRoomList() {
 
 let hoverId = null;
 canvas.addEventListener('mousemove', e => {
-  if (!floor) return;
   const rc = canvas.getBoundingClientRect();
   const wx = (e.clientX - rc.left) / scale, wy = (e.clientY - rc.top) / scale;
+  if (!floor) { // atrio e area relax
+    const h = sceneHit(wx, wy);
+    hoverId = h && h.npc ? h.npc.id : null;
+    canvas.style.cursor = h && !h.npc ? 'pointer' : '';
+    showTip(h);
+    return;
+  }
   let best = null;
   for (const c of [...chars.values(), ...npcs.filter(n => n.npc !== 'cat')]) if (Math.abs(wx - c.x) < 8 && wy < c.y + 2 && wy > c.y - 26) best = c;
   hoverId = best ? best.id : null;
   canvas.style.cursor = best ? 'pointer' : '';
 });
-canvas.addEventListener('mouseleave', () => { hoverId = null; });
+canvas.addEventListener('mouseleave', () => { hoverId = null; showTip(null); });
 
 canvas.addEventListener('click', e => {
-  if (!floor) return;
   const rc = canvas.getBoundingClientRect();
   const wx = (e.clientX - rc.left) / scale, wy = (e.clientY - rc.top) / scale;
+  if (!floor) {
+    const h = sceneHit(wx, wy);
+    if (h && h.door) { canvas.style.cursor = ''; goTo(h.back ? null : 'relax'); }
+    else if (h && h.cab) playArcade(h.cab);
+    return;
+  }
   let best = null;
   for (const c of chars.values()) if (Math.abs(wx - c.x) < 8 && wy < c.y + 2 && wy > c.y - 26) best = c;
   if (best) { showInfo(best.sid, best.id); return; }
@@ -2430,11 +2724,12 @@ function updateElevator() {
   const sig = JSON.stringify([viewSid, !!(snap && snap.replay), items.map(i => [i.id, i.p, i.wing, i.c.agents, i.c.wait, i.al])]);
   if (sig === elevSig) return;
   elevSig = sig;
-  const cur = viewSid === 'archive' ? '-1' : viewSid === 'replay' ? 'S' : viewSid ? floorNo(viewSid) : 'T';
+  const cur = viewSid === 'archive' ? '-1' : viewSid === 'replay' ? 'S' : viewSid === 'relax' ? 'R' : viewSid ? floorNo(viewSid) : 'T';
   const el = $('#elevator');
   el.innerHTML = `<div class="disp">${cur}<small>${tr('PIANO')}</small></div>` +
     items.slice().reverse().map((i, j, arr) => (twoWings && (j === 0 || arr[j - 1].wing !== i.wing) ? `<div class="lbl sec">${i.wing === 'cowork' ? 'COWORK' : 'CODE'}</div>` : '') + `<button data-sid="${esc(i.id)}" class="${i.id === viewSid ? 'cur' : ''} ${i.c.wait ? 'wait' : i.al ? 'alert' : ''}" title="${esc(i.p)}"><i style="background:${i.col}"></i>${i.n}<b>${i.c.agents}</b><small>${esc(i.p)}</small></button>`).join('') +
     `<button class="lobby ${viewSid ? '' : 'cur'}" data-sid="">T<small>${tr('atrio')}</small></button>` +
+    `<button class="lobby ${viewSid === 'relax' ? 'cur' : ''}" data-sid="relax">R<small>${tr('relax')}</small></button>` +
     (snap && snap.replay ? `<button class="lobby ${viewSid === 'replay' ? 'cur' : ''}" data-sid="replay">S<small>${tr('replay')}</small></button>` : '') +
     `<button class="lobby ${viewSid === 'archive' ? 'cur' : ''}" data-sid="archive">-1<small>${tr('archivio')}</small></button>`;
   for (const b of el.querySelectorAll('button')) b.onclick = () => goTo(b.dataset.sid || null);
@@ -2495,6 +2790,13 @@ function frame(t) {
   const items = [];
   if (viewSid === 'archive') {
     drawBasement(t);
+  } else if (viewSid === 'relax') {
+    if (relax) {
+      updateRelax(dt, t);
+      drawRelax(t);
+      for (const n of relax.npcs) { const it = updateBalloon(n); if (it) items.push(it); }
+      placeBalloons(items);
+    }
   } else if (floor && viewSid) {
     update(dt, t);
     updateNpcs(dt, t);
@@ -2679,6 +2981,8 @@ $('#btn-pin').onclick = togglePin;
 $('#btn-min').onclick = () => isApp && window.officeApp.minimize();
 $('#btn-close').onclick = () => isApp && window.officeApp.close();
 window.addEventListener('keydown', e => {
+  if (window.arcadeOpen && arcadeOpen()) return; // il cabinato ha i suoi tasti
+  if (e.target.closest && e.target.closest('input,select,textarea')) return; // si sta scrivendo
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
   if (k === 'd') toggleDemo();
@@ -2690,6 +2994,7 @@ window.addEventListener('keydown', e => {
   else if (k === 'f') toggleFollow();
   else if (k === 't' || k === '0' || k === 'home') goTo(null);
   else if (k === 'a') goTo('archive');
+  else if (k === 'r') goTo('relax');
   else if (k === '/' || k === 'k') { e.preventDefault(); toggleSearch(); }
   else if (k === 'm') toggleWidget();
   else if (k === 'o') toggleSettings();
@@ -2703,7 +3008,11 @@ window.addEventListener('keydown', e => {
   else if (/^[1-9]$/.test(k)) { const s = sessions()[Number(k) - 1]; if (s) goTo(s.id); }
   else if (k === '+' || k === '=') setZoom(zoom * 1.15);
   else if (k === '-') setZoom(zoom / 1.15);
-  else if (k === 'escape') { if (window.closeWorldMap) closeWorldMap(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; $('#settings').hidden = true; roomListKey = null; }
+  else if (k === 'escape') {
+    // dall'area relax si torna in atrio, se non c'è niente di aperto da chiudere
+    if (viewSid === 'relax' && $('#help').hidden && $('#settings').hidden && $('#search').hidden && !(window.worldMapOpen && worldMapOpen())) goTo(null);
+    if (window.closeWorldMap) closeWorldMap(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; $('#settings').hidden = true; roomListKey = null;
+  }
 });
 window.addEventListener('resize', () => { if (snap) reconcile(); });
 
