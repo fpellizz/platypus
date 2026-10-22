@@ -574,11 +574,22 @@ const ARCADES = [
   { id: 'pacman', name: 'PAC-MAN', col: C.yellow, body: '#1D2B53', scr: '#000000' },
   { id: 'tetris', name: 'TETRIS', col: C.red, body: '#7E2553', scr: '#0b1430' },
   { id: 'invaders', name: 'SPACE INVADERS', col: C.green, body: '#2b2b3a', scr: '#000000' },
+  { id: 'frogger', name: 'FROGGER', col: C.blue, body: '#008751', scr: '#1D2B53' },
 ];
 const PAC_ICON = ['01110', '11100', '11000', '11100', '01110'];
 const INV_ICON = ['0100010', '0111110', '1101011', '1111111', '1010101'];
+const FROG_ICON = ['1000001', '0111110', '1101011', '0111110', '1000001'];
 const RELAX_NAMES = ['Gianni', 'Marisa', 'Franco', 'Loredana', 'Sandro', 'Patrizia', 'Walter', 'Rossella'];
 const RELAX_DEPTS = ['contabilita', 'vendite', 'marketing', 'acquisti', 'logistica', 'segreteria', 'legale', 'magazzino'];
+// ruoli aziendali: credibili su LinkedIn, assurdi appena ci pensi (in inglese, come sui biglietti da visita)
+const RELAX_ROLES = [
+  'Help Desk Evangelist', 'Firewall Outage Architect', 'Senior Meeting Facilitator', 'Head of Synergy Alignment',
+  'Chief Excel Officer', 'Agile Coffee Strategist', 'Legacy Code Archaeologist', 'Junior Visionary',
+  'Lead Reply-All Specialist', 'Principal PowerPoint Engineer', 'Deadline Postponement Manager', 'Cloud Weather Analyst',
+  'VP of Internal Buzzwords', 'Scrum Master of Ceremonies', 'Data Lake Lifeguard', 'Printer Relations Manager',
+  'Digital Transformation Survivor', 'Head of Low-Hanging Fruit', 'Blockchain Feng Shui Consultant', 'Senior Out-of-Office Officer',
+  'Ticket Escalation Choreographer', 'Global Head of Local Issues', 'Backup Restore Optimist', 'Inbox Zero Denier',
+];
 const BANANA_LINE = tr('Beh, almeno una te la sei mangiata...');
 let relax = null;
 
@@ -604,10 +615,10 @@ function layoutRelax() {
   const sig = W + 'x' + H;
   if (relax && relax.sig === sig) return;
   dropRelax();
-  // da sinistra: uscita, angolo bar, finestre; a destra divano, tre cabinati, divano
-  const lane = WALL_H + 28, kx = 34, bx = W - 152;
+  // da sinistra: uscita, angolo bar, finestre; a destra divano, quattro cabinati, divano
+  const lane = WALL_H + 28, kx = 34, bx = W - 175;
   const spots = [];
-  const sofas = [{ x: bx, col: C.orange }, { x: bx + 110, col: C.lav }];
+  const sofas = [{ x: bx, col: C.orange }, { x: bx + 133, col: C.lav }];
   for (const s of sofas) for (const dx of [10, 24]) spots.push({ kind: 'sofa', x: s.x + dx, y: WALL_H + 10, ex: s.x + dx, dir: 'down' });
   const cabs = ARCADES.map((a, i) => ({ ...a, x: bx + 40 + i * 23, top: WALL_H - 26, player: null }));
   for (const c of cabs) spots.push({ kind: 'arcade', cab: c, x: c.x + 9, y: WALL_H + 24, ex: c.x + 9, dir: 'up' });
@@ -627,6 +638,7 @@ function layoutRelax() {
   // più è larga la stanza, più gente in pausa
   const n = Math.max(5, Math.min(8, 5 + Math.floor((W - 360) / 140)));
   const t = performance.now(), off = (Math.random() * RELAX_NAMES.length) | 0;
+  const roles = RELAX_ROLES.slice().sort(() => Math.random() - 0.5);
   const seats = spots.filter(s => s.kind === 'table' || s.kind === 'sofa').sort(() => Math.random() - 0.5);
   const arcade = spots.filter(s => s.kind === 'arcade');
   for (let i = 0; i < n; i++) {
@@ -638,7 +650,7 @@ function layoutRelax() {
     const play = spot.kind === 'arcade';
     const c = { key, id: key, npc: 'relax', x: spot.x, y: spot.y, path: [], dir: spot.dir, moving: false, alpha: 1, phase: play ? 'stand' : 'seated',
       look: makeLook(key, { kind: 'sub', type: RELAX_DEPTS[(off + i) % RELAX_DEPTS.length] }),
-      data: { status: 'idle', kind: 'sub', name: banana ? 'Rag. Bruno' : RELAX_NAMES[(off + i) % RELAX_NAMES.length], type: '', action: '', description: '' },
+      data: { status: 'idle', kind: 'sub', name: banana ? 'Rag. Bruno' : RELAX_NAMES[(off + i) % RELAX_NAMES.length], type: '', action: '', description: banana ? 'Chief Potassium Officer' : roles[i] },
       spot, act: play ? 'play' : 'sit', until: t + 2000 + Math.random() * 10000, speech: '', speechUntil: 0, quipAt: 0, banana, t0: t - Math.random() * 10000,
       doing: banana ? tr('Mangia una banana') : play ? tr('Gioca a {game}', { game: spot.cab.name }) : tr('Si gode la pausa') };
     spot.by = c;
@@ -710,6 +722,12 @@ function drawArcadeScreen(c, x, y, t) {
     for (let i = 0; i < 12; i++) { if (i !== 7) R(x + i, y + 9, 1, 1, cols[i % 5]); if (i < 4 || i > 8) R(x + i, y + 8, 1, 1, cols[(i + 2) % 5]); }
     const py = k % 7, px = x + 3 + ((k / 7 | 0) % 3) * 2;
     R(px, y + py, 3, 1, C.orange); R(px + 1, y + py + 1, 1, 1, C.orange);
+  } else if (c.id === 'frogger') {
+    // strada con le macchine e la rana che attraversa
+    R(x, y, 12, 2, C.dgreen); R(x, y + 8, 12, 2, C.dgreen);
+    for (let i = 0; i < 12; i += 4) R(x + i, y + 5, 2, 1, C.lgrey);
+    P(x + (k % 16) - 3, y + 3, 3, 2, C.red); P(x + 12 - ((k + 6) % 16), y + 6, 4, 2, C.yellow);
+    R(x + 5, y + 8 - ((k / 4 | 0) % 4) * 2, 2, 2, C.green);
   } else {
     const o = (k % 4) - 1;
     for (let r = 0; r < 2; r++) for (let i = 0; i < 4; i++) P(x + 1 + i * 3 + o, y + 1 + r * 2, 2, 1, r ? C.green : C.pink);
@@ -725,6 +743,7 @@ function drawCabinet(c, t) {
   R(x + 1, y + 1, 16, 7, C.black); R(x + 1, y + 7, 16, 1, c.col);
   if (c.id === 'pacman') { drawIcon(PAC_ICON, x + 3, y + 2, C.yellow); R(x + 10, y + 4, 1, 1, C.white); R(x + 13, y + 4, 1, 1, C.white); }
   else if (c.id === 'tetris') { R(x + 3, y + 2, 6, 2, C.red); R(x + 5, y + 4, 2, 2, C.red); R(x + 10, y + 4, 4, 2, C.blue); R(x + 12, y + 2, 4, 2, C.blue); }
+  else if (c.id === 'frogger') drawIcon(FROG_ICON, x + 5, y + 2, C.green);
   else drawIcon(INV_ICON, x + 5, y + 2, C.green);
   R(x + 2, y + 9, 14, 12, '#111'); R(x + 3, y + 10, 12, 10, c.scr);
   drawArcadeScreen(c, x + 3, y + 10, t);
@@ -803,7 +822,7 @@ function drawRelax(t) {
   pixText(name, cx - tw / 2, 2, Math.sin(t / 800) > -0.96 ? C.orange : '#5a3a10', 7);
   drawDoor(relax.door, tr('ATRIO'), C.yellow, t);
   R(bx + 5, 28, 25, 9, C.black); pixText('RELAX', bx + 8, 30, Math.sin(t / 500) > -0.9 ? C.pink : '#5a2a44', 4);
-  drawClock(bx + 127, 32);
+  drawClock(bx + 150, 32);
   drawKitchen(t);
   for (const s of relax.sofas) drawSofaBack(s);
   for (const c of relax.cabs) drawCabinet(c, t);
