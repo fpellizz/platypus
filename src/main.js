@@ -72,6 +72,10 @@ function createWindow() {
   };
   win.on('moved', remember);
   win.on('resized', remember);
+  // la barra dei titoli è disegnata dalla pagina: tienila allineata allo stato reale della finestra
+  const sendMax = () => { if (win && !win.isDestroyed()) win.webContents.send('office:maximized', win.isMaximized()); };
+  win.on('maximize', sendMax);
+  win.on('unmaximize', sendMax);
   win.on('focus', () => win.flashFrame(false));
   win.on('close', () => { quitting = true; });
   win.on('closed', () => { win = null; });
@@ -146,6 +150,15 @@ function setWidget(on) {
     if (normalBounds) { if (WAYLAND) win.setSize(normalBounds.width, normalBounds.height); else win.setBounds(normalBounds); }
     win.setAlwaysOnTop(pinState(), 'floating');
   }
+}
+
+// ---------------------------------------------------------------- tutto schermo
+// Ingrandisce la finestra a tutta l'area utile dello schermo (la barra dei titoli resta visibile).
+function toggleMaximize() {
+  if (!win) return false;
+  if (widgetMode) setWidget(false); // dalla mini si torna prima alle dimensioni normali
+  if (win.isMaximized()) win.unmaximize(); else win.maximize();
+  return win.isMaximized();
 }
 
 // ---------------------------------------------------------------- report giornaliero
@@ -348,6 +361,8 @@ function ensureStartMenuShortcut() {
 
 // ---------------------------------------------------------------- IPC dalla pagina
 ipcMain.on('office:minimize', () => win && win.minimize());
+ipcMain.handle('office:toggleMaximize', () => toggleMaximize());
+ipcMain.handle('office:isMaximized', () => !!(win && win.isMaximized()));
 ipcMain.on('office:close', () => { quitting = true; app.quit(); });
 ipcMain.handle('office:togglePin', () => setPin(!pinState()));
 ipcMain.handle('office:getPin', () => pinState());

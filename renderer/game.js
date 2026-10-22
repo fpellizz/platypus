@@ -2998,6 +2998,11 @@ $('#btn-balloons').onclick = toggleBalloons;
 $('#btn-follow').onclick = toggleFollow;
 $('#btn-pin').onclick = togglePin;
 $('#btn-min').onclick = () => isApp && window.officeApp.minimize();
+function showMaximized(on) { $('#btn-max').classList.toggle('on', !!on); }
+$('#btn-max').onclick = async () => {
+  if (!isApp || !window.officeApp.toggleMaximize) return;
+  showMaximized(await window.officeApp.toggleMaximize());
+};
 $('#btn-close').onclick = () => isApp && window.officeApp.close();
 window.addEventListener('keydown', e => {
   if (window.arcadeOpen && arcadeOpen()) return; // il cabinato ha i suoi tasti
@@ -3040,6 +3045,10 @@ window.addEventListener('resize', () => { if (snap) reconcile(); });
   $('#btn-crt').classList.toggle('on', crtOn);
   $('#btn-sound').classList.toggle('on', soundOn);
   if (isApp && window.officeApp.getPin) $('#btn-pin').classList.toggle('on', !!(await window.officeApp.getPin()));
+  if (isApp && window.officeApp.isMaximized) showMaximized(await window.officeApp.isMaximized());
+  // anche doppio clic sulla barra o Win+↑: il bottone segue la finestra, non solo i propri click
+  if (isApp && window.officeApp.onMaximized) window.officeApp.onMaximized(showMaximized);
+  if (isApp && !window.officeApp.toggleMaximize) $('#btn-max').hidden = true; // shell più vecchia
   if (isApp && window.officeApp.onGoto) window.officeApp.onGoto(sid => { if (sessionById(sid)) goTo(sid); });
   try { await Promise.all([document.fonts.load('10px PS2P'), document.fonts.load('16px VT')]); } catch {}
   layoutLobby();
