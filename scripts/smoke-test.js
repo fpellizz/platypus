@@ -87,6 +87,18 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   hooks.uninstall({ base });
   ok(!hooks.status({ base }), 'rimossi');
 
+  console.log('finestra della sessione (Windows)');
+  const osint = require(path.join(ROOT, 'src', 'core', 'osint'));
+  const script = osint.focusScriptWin(1234, ['idea64'], { name: 'dsg', path: 'c:\\users\\x\\dsg' });
+  ok(script.includes("$PROJ = 'dsg'") && script.includes("$PROJPATH = 'c:\\users\\x\\dsg'"), 'il progetto della sessione finisce nello script');
+  ok(/\[AOW\]::Windows/.test(script), 'sceglie tra tutte le finestre del processo, non solo la principale');
+  // un apice nel nome della cartella non deve poter chiudere la stringa PowerShell
+  const quoted = osint.focusScriptWin(1, ['x'], { name: "o'brien", path: "c:\\o'brien" });
+  const projLine = quoted.split('\n').find(l => l.startsWith('$PROJ '));
+  ok(projLine === "$PROJ = 'o''brien'", 'apici raddoppiati: ' + projLine);
+  // senza cartella valida si torna al comportamento di sempre
+  ok(osint.focusScriptWin(1, ['x'], null).includes("$PROJ = ''"), 'senza progetto non si filtra per titolo');
+
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(failed ? `\n${failed} controlli falliti` : '\nTutto a posto.');
   process.exit(failed ? 1 : 0);
