@@ -326,5 +326,6 @@
  "Premi P per continuare": "Press P to resume",
  "Frecce: muovi · P: pausa · Esc: esci": "Arrows: move · P: pause · Esc: exit",
  "Frecce: muovi · Su/X: ruota · Spazio: caduta · P: pausa · Esc: esci": "Arrows: move · Up/X: rotate · Space: drop · P: pause · Esc: exit",
- "Frecce: muovi · Spazio: spara · P: pausa · Esc: esci": "Arrows: move · Space: fire · P: pause · Esc: exit"
+ "Frecce: muovi · Spazio: spara · P: pausa · Esc: esci": "Arrows: move · Space: fire · P: pause · Esc: exit",
+ "Frecce: salta · P: pausa · Esc: esci": "Arrows: hop · P: pause · Esc: exit"
 }

@@ -1,11 +1,11 @@
-// Cabinet arcade: finestra modale con tre mini giochi (pacman, tetris, invaders).
+// Cabinet arcade: finestra modale con quattro mini giochi (pacman, tetris, invaders, frogger).
 // API: openArcade(id) / closeArcade() / arcadeOpen(). Caricato dopo game.js.
 (() => {
 'use strict';
 const COL = { k: '#000000', navy: '#1D2B53', plum: '#7E2553', dgreen: '#008751', brown: '#AB5236', dgrey: '#5F574F', lgrey: '#C2C3C7',
   white: '#FFF1E8', red: '#FF004D', orange: '#FFA300', yellow: '#FFEC27', green: '#00E436', blue: '#29ADFF', lav: '#83769C', pink: '#FF77A8', peach: '#FFCCAA' };
 const STEP = 1 / 60;
-const NAMES = { pacman: 'PAC-MAN', tetris: 'TETRIS', invaders: 'SPACE INVADERS' };
+const NAMES = { pacman: 'PAC-MAN', tetris: 'TETRIS', invaders: 'SPACE INVADERS', frogger: 'FROGGER' };
 const KM = { ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', Space: 'fire', KeyX: 'x', KeyZ: 'z' };
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -416,7 +416,135 @@ function invaders() {
   };
 }
 
-const GAMES = { pacman, tetris, invaders };
+// ───────────────────────── FROGGER ─────────────────────────
+function frogger() {
+  // righe: 0 tane, 1-5 fiume, 6 aiuola centrale, 7-11 strada, 12 partenza; sotto la barra del tempo
+  const W = 15, TS = 10, TIME = 30, BAYS = [1, 4, 7, 10, 13], ROAD = '#3a3640';
+  const ROADS = [[11, -2.2, 1, 4, COL.red], [10, 2.8, 1, 5, COL.yellow], [9, -1.6, 2, 6, COL.lgrey], [8, 3.6, 1, 6, COL.pink], [7, -1.2, 3, 8, COL.orange]];
+  const RIVER = [[5, -1.4, 2, 5, 't'], [4, 1.6, 4, 7, 'l'], [3, 2.6, 6, 10, 'l'], [2, -1.9, 3, 6, 't'], [1, 1.2, 3, 6, 'l']];
+  let lanes, fx, fy, best, tm, lvl, lives, ph, pt, cause, filled, face, anim = 0;
+
+  function build() {
+    const f = 1 + 0.15 * lvl;
+    lanes = [...ROADS.map(d => ({ y: d[0], v: d[1] * f, len: d[2], gap: d[3], col: d[4], river: false })),
+      ...RIVER.map(d => ({ y: d[0], v: d[1] * f, len: d[2], gap: d[3], tur: d[4] === 't', river: true }))];
+    lanes.forEach((l, i) => {
+      const n = Math.ceil((W + l.len) / l.gap) + 1; l.span = n * l.gap;
+      l.items = Array.from({ length: n }, (_, j) => ({ x: j * l.gap - l.len - (i * 3.7 % l.gap), off: rnd(0, 6), dv: l.tur && (i + j) % 2 === 0 }));
+    });
+  }
+  const sunk = it => it.dv && (anim + it.off) % 6 > 4.4;
+  const lane = y => lanes.find(l => l.y === y);
+  function spawn() { fx = 7; fy = 12; best = 12; tm = TIME; face = 'u'; ph = 'run'; }
+  const hud = () => { S.extra = tr('VITE') + ' ' + Math.max(0, lives); };
+  function die(why) { ph = 'die'; pt = 1; cause = why; }
+
+  function hop(k) {
+    let nx = fx, ny = fy;
+    if (k === 'u') ny--; else if (k === 'd') ny++; else if (k === 'l') nx--; else nx++;
+    if (ny > 12 || nx < -0.2 || nx > W - 0.8) return;
+    fx = nx; fy = ny; face = k;
+    if (fy < best) { best = fy; S.add(10); }
+    if (fy === 0) {
+      const b = Math.round(fx);
+      if (BAYS.includes(b) && !filled[b] && Math.abs(fx - b) < 0.6) {
+        filled[b] = true; S.add(50 + Math.ceil(tm) * 2); ph = 'home'; pt = 0.8; fx = b;
+      } else die('wall');
+    }
+  }
+
+  return {
+    w: W * TS, h: 13 * TS + 10, hint: () => tr('Frecce: salta · P: pausa · Esc: esci'),
+    reset() { lvl = 0; lives = 3; filled = {}; build(); spawn(); hud(); },
+    key(k, down, rep) { if (down && !rep && ph === 'run' && 'udlr'.includes(k)) hop(k); },   // un salto per pressione, niente auto-repeat
+    update(dt) {
+      anim += dt;
+      for (const l of lanes) for (const it of l.items) {
+        it.x += l.v * dt;
+        if (l.v > 0 && it.x > W + 1) it.x -= l.span; else if (l.v < 0 && it.x + l.len < -1) it.x += l.span;
+      }
+      if (ph === 'die') {
+        if ((pt -= dt) > 0) return;
+        lives--; hud(); if (lives <= 0) { S.end(); return; } spawn(); return;
+      }
+      if (ph === 'home') {
+        if ((pt -= dt) > 0) return;
+        if (BAYS.every(b => filled[b])) { S.add(100 * (lvl + 1)); lvl++; filled = {}; build(); }
+        spawn(); return;
+      }
+      if ((tm -= dt) <= 0) { die('time'); return; }
+      const l = lane(fy);
+      if (!l) return;
+      if (!l.river) {   // strada: collisione con i veicoli
+        if (l.items.some(it => it.x < fx + 0.85 && it.x + l.len > fx + 0.15)) die('hit');
+      } else {   // fiume: serve un tronco/tartaruga sotto il centro della rana
+        const c = fx + 0.5, it = l.items.find(i => c > i.x + 0.05 && c < i.x + l.len - 0.05 && !sunk(i));
+        if (!it) { die('drown'); return; }
+        fx += l.v * dt;
+        if (fx < -0.5 || fx > W - 0.5) die('drown');
+      }
+    },
+    draw(c) {
+      const T = TS;
+      c.fillStyle = COL.k; c.fillRect(0, 0, W * T, 13 * T + 10);
+      c.fillStyle = COL.dgreen; c.fillRect(0, 0, W * T, T); c.fillRect(0, 6 * T, W * T, T); c.fillRect(0, 12 * T, W * T, T);
+      c.fillStyle = COL.green; for (let x = 0; x < W * 2; x++) for (const y of [0, 6, 12]) c.fillRect(x * 5 + 1 + (y % 4), y * T + 2 + (x % 3) * 3, 1, 1);
+      c.fillStyle = COL.navy; c.fillRect(0, T, W * T, 5 * T);
+      c.fillStyle = COL.blue; for (let y = 1; y < 6; y++) for (let x = 0; x < W; x++) c.fillRect(x * T + ((y * 3 + x * 7) % 8), y * T + 3 + (x % 2) * 3, 2, 1);
+      c.fillStyle = ROAD; c.fillRect(0, 7 * T, W * T, 5 * T);
+      c.fillStyle = COL.lgrey; for (let y = 8; y < 12; y++) for (let x = 0; x < W * 2; x++) c.fillRect(x * 5 + 1, y * T, 3, 1);
+      // tane
+      for (const b of BAYS) {
+        c.fillStyle = COL.navy; c.fillRect(b * T - 1, 1, T + 2, T - 1);
+        c.fillStyle = COL.blue; c.fillRect(b * T - 1, T - 1, T + 2, 1);
+        if (filled[b]) frog(c, b, 0, 'd', COL.green);
+      }
+      for (const l of lanes) for (const it of l.items) {
+        const x = Math.round(it.x * T), y = l.y * T, w = l.len * T;
+        if (x > W * T || x + w < 0) continue;
+        if (!l.river) {
+          const fw = l.v > 0;
+          c.fillStyle = l.col; c.fillRect(x + 1, y + 2, w - 2, 6);
+          if (l.len > 1) { c.fillStyle = COL.dgrey; c.fillRect(fw ? x + w - 4 : x + 1, y + 2, 3, 6); }
+          c.fillStyle = COL.k; c.fillRect(fw ? x + w - 3 : x + 2, y + 3, 1, 4); c.fillRect(x + 2, y + 8, 2, 1); c.fillRect(x + w - 4, y + 8, 2, 1);
+        } else if (!l.tur) {
+          c.fillStyle = COL.brown; c.fillRect(x, y + 2, w, 6);
+          c.fillStyle = COL.dgrey; for (let i = 3; i < w - 2; i += 6) c.fillRect(x + i, y + 4, 3, 1);
+          c.fillStyle = COL.peach; c.fillRect(x, y + 2, 1, 6); c.fillRect(x + w - 1, y + 2, 1, 6);
+        } else {
+          const s = sunk(it), warn = it.dv && !s && (anim + it.off) % 6 > 3.6 && (anim * 6 | 0) % 2 === 0;
+          for (let i = 0; i < l.len; i++) {
+            if (s) { c.fillStyle = COL.blue; c.fillRect(x + i * T + 3, y + 5, 4, 1); continue; }
+            c.fillStyle = warn ? COL.red : COL.dgreen; c.fillRect(x + i * T + 1, y + 2, 8, 6);
+            c.fillStyle = warn ? COL.orange : COL.green; c.fillRect(x + i * T + 3, y + 3, 4, 3);
+            c.fillStyle = COL.k; c.fillRect(x + i * T + (l.v < 0 ? 1 : 8), y + 4, 1, 1);
+          }
+        }
+      }
+      if (ph !== 'home') {
+        if (ph === 'die') {
+          const x = Math.round(fx * T), y = fy * T;
+          if (cause === 'drown') { c.fillStyle = COL.white; const r = (1 - pt) * 5; c.fillRect(x + 5 - r, y + 5, 1, 1); c.fillRect(x + 5 + r, y + 5, 1, 1); c.fillRect(x + 5, y + 5 - r, 1, 1); }
+          else { c.fillStyle = COL.red; for (let i = 1; i < 9; i++) { c.fillRect(x + i, y + i, 1, 1); c.fillRect(x + 9 - i, y + i, 1, 1); } }
+        } else frog(c, fx, fy, face, COL.green);
+      }
+      // barra del tempo
+      c.fillStyle = COL.k; c.fillRect(0, 13 * T, W * T, 10);
+      const r = Math.max(0, tm / TIME);
+      c.fillStyle = r > 0.5 ? COL.green : r > 0.25 ? COL.yellow : COL.red; c.fillRect(2, 13 * T + 3, Math.round(r * 90), 4);
+      txt(c, tr('LIVELLO') + ' ' + (lvl + 1), W * T - 2, 13 * T + 2, COL.lav, 'right');
+    },
+  };
+  function frog(c, fx_, fy_, dir, col) {
+    const x = Math.round(fx_ * TS), y = fy_ * TS;
+    c.fillStyle = col; c.fillRect(x + 2, y + 3, 6, 5); c.fillRect(x + 1, y + 2, 2, 2); c.fillRect(x + 7, y + 2, 2, 2); c.fillRect(x + 1, y + 7, 2, 2); c.fillRect(x + 7, y + 7, 2, 2);
+    c.fillStyle = COL.white;
+    const e = { u: [[2, 2], [7, 2]], d: [[2, 6], [7, 6]], l: [[2, 2], [2, 6]], r: [[7, 2], [7, 6]] }[dir];
+    for (const [ex, ey] of e) c.fillRect(x + ex, y + ey, 1, 1);
+  }
+}
+
+const GAMES = { pacman, tetris, invaders, frogger };
 
 // ───────────────────────── guscio: finestra, input, loop ─────────────────────────
 function fit() {
