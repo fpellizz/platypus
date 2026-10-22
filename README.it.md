@@ -14,6 +14,7 @@ Gira su **Windows, macOS e Linux**: si clona da git e si lancia, senza installer
 - **Costi e token** per piano e nel tempo, **avvisi** (agente fermo, errori di fila, budget superato), **archivio e replay** delle sessioni passate, **report giornaliero**.
 - **Mappa della realtà** di ogni agente: il territorio che conosce (con la nebbia su ciò che non ha mai visto), la sua traiettoria in uno spazio a 7 dimensioni, la bolla del contesto e la stella polare del compito (sperimentale).
 - **Vita d'ufficio**: il gatto sulla tastiera di chi è bloccato, il collega fastidioso (il nome lo scegli tu), le risorse umane che richiamano chi butta giù una lavagna, feste per commit e test verdi, notte, vestiti per feste e meteo, età e mantelli da supereroe secondo modello ed effort.
+- **Area relax**: una porta RELAX nell'atrio (o il tasto R) porta alla caffetteria, dove i dipendenti siedono ai tavoli e sui divani, prendono un caffè, e uno mangia una banana (e viene preso in giro); tre cabinati arcade (Pac-Man, Tetris, Space Invaders) si giocano cliccandoli.
 - **Italiano e inglese**, con una struttura pronta per altre lingue.
 
 Le novità di ogni versione sono in [CHANGELOG.it.md](CHANGELOG.it.md).
