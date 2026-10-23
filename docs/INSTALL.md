@@ -104,8 +104,17 @@ To uninstall:
 2. Untick *Start when I log in* in the tray menu.
 3. Delete the repository folder.
 4. Optionally, also delete:
-   - `~/.platypus`, the settings and stats;
+   - `~/.platypus`, the settings, the stats and the Workshop book;
    - the window preferences folder `Platypus` under AppData (Windows), Application Support (macOS) or `~/.config` (Linux).
+
+### The Workshop book
+
+The lessons Platypus deduces from your sessions live in `~/.platypus/bottega`, one JSON file per project folder (the file name is a key computed from the folder). Nothing leaves your computer.
+
+- To forget a single lesson: open the Book (BOOK on the floor's notice board, or WORKSHOP in the lobby) and press FORGET.
+- To forget a project's book, or all of them: close Platypus and delete its file, or the whole `~/.platypus/bottega` folder.
+- To stop learning: OPT → *The Workshop book learns from sessions*. Grandpa has his own switch next to it.
+- If you added the book's section to a project's `CLAUDE.md`, it sits between `<!-- platypus:bottega:start -->` and `<!-- platypus:bottega:end -->`: delete those lines to remove it. The previous version of the file is in `CLAUDE.md.platypus-backup`.
 
 ## Special cases
 

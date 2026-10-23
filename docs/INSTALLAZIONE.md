@@ -150,9 +150,18 @@ Usa solo Node.js, senza Electron e senza `npm install`: è il modo più leggero,
 2. togli la spunta *Avvia all'accesso al computer* dal menu dell'icona;
 3. cancella la cartella del repository;
 4. se vuoi, cancella anche:
-   - impostazioni e statistiche: `~/.platypus`;
+   - impostazioni, statistiche e Libro della bottega: `~/.platypus`;
    - preferenze della finestra: `%APPDATA%\Platypus`, `~/Library/Application Support/Platypus` oppure `~/.config/Platypus`;
    - i collegamenti creati con `npm run shortcut`.
+
+### Il Libro della bottega
+
+Le lezioni che Platypus deduce dalle tue sessioni stanno in `~/.platypus/bottega`, un file JSON per cartella di progetto (il nome del file è una chiave calcolata dalla cartella). Niente esce dal computer.
+
+- Per dimenticare una lezione: apri il Libro (LIBRO sul tabellone del piano, oppure BOTTEGA nell'atrio) e premi DIMENTICA.
+- Per dimenticare il libro di un progetto, o tutti: chiudi Platypus e cancella il suo file, oppure l'intera cartella `~/.platypus/bottega`.
+- Per non farlo più imparare: OPZ → *Il Libro della bottega impara dalle sessioni*. Il Nonno ha un suo interruttore lì accanto.
+- Se hai aggiunto la sezione del libro al `CLAUDE.md` di un progetto, sta tra `<!-- platypus:bottega:start -->` e `<!-- platypus:bottega:end -->`: cancella quelle righe per toglierla. La versione precedente del file è in `CLAUDE.md.platypus-backup`.
 
 ## Casi particolari
 

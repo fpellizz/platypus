@@ -33,6 +33,10 @@ Solo moduli di Node.js, nessun pacchetto npm: per questo la modalità browser pa
 | `stats.js` | statistiche per giorno e settimana, report |
 | `worldmap.js` | mappa della realtà: territorio, frontiera, traiettoria a 7 dimensioni |
 | `semantic.js` | bolla del contesto e stella polare (TF-IDF, PCA, gruppi, allineamento) |
+| `grounding.js` | mappa contro territorio: ricordi scaduti (mtime sul disco con una cache di 10 s, e modifiche degli altri agenti), modifiche alla cieca, percorsi inventati, affermazioni nelle risposte e le loro prove |
+| `surprise.js` | classificazione dei fallimenti (Jest, pytest, go, cargo, npm, tsc, Node, Python, PowerShell…), estratti degli errori e file citati, sorpresa, reazioni (si corregge/insiste/si ferma) e catene causali |
+| `bottega.js` | Libro della bottega: lezioni per progetto dedotte dai fatti qui sopra, peso che si dimezza in 30 giorni, apprendimento dal vivo e dall'archivio, suggerimenti del Nonno, sezione per il `CLAUDE.md` |
+| `claudemd.js` | scrittura prudente della sezione nel `CLAUDE.md` di un progetto: tra i marcatori, copia di sicurezza prima, il resto byte per byte, scrittura atomica |
 | `weather.js`, `releases.js`, `describe.js`, `demo.js`, `demoworld.js` | meteo, rilasci git/gh, descrizioni degli strumenti, demo |
 | `../i18n` | traduzioni (chiave = testo italiano, `locales/<lingua>/*.json`) |
 
@@ -54,6 +58,10 @@ Tutto ciò che dipende dal sistema operativo sta in tre punti: `osint.js`, `sour
 | `GET /api/stats/costs`, `/api/stats/honors`, `/api/report` | statistiche e report |
 | `POST /api/demo`, `/api/cowork`, `/api/cowork-scan` | demo, ala Cowork, ricerca Cowork |
 | `GET /i18n.js` | traduzioni per la pagina |
+| `GET /api/grounding` | mappa contro territorio e sorprese di un agente o della sessione (`sid`, `aid`, `replay`) |
+| `GET /api/bottega`, `/api/bottega/list`, `/api/bottega/hints` | il libro di un progetto (`sid`, `cwd` o `key`), i progetti con un libro, cosa direbbe adesso il Nonno |
+| `POST /api/bottega`, `/api/bottega/learn` | fissa/ignora/ripristina/dimentica una lezione; impara dall'archivio del progetto in background |
+| `GET`/`POST /api/bottega/claudemd` | anteprima della sezione per il `CLAUDE.md`; scriverla (solo con `confirm: true`) |
 
 Il server rifiuta le richieste con un `Host` o un `Origin` diversi da `127.0.0.1`/`localhost` (protezione dal DNS rebinding e dai siti web).
 
@@ -103,5 +111,6 @@ Il vantaggio sarebbero programmi compilati molto più piccoli (circa 10 MB invec
 | `~/.claude/` | di Claude Code: letto, mai modificato, tranne gli hook in `settings.json` se li installi |
 | `~/.platypus/settings.json` | opzioni dell'ufficio |
 | `~/.platypus/stats.json` | statistiche per giorno e settimana |
+| `~/.platypus/bottega/<chiave>.json` | il Libro della bottega di ogni progetto (un file per cartella di progetto) |
 | `~/.platypus/launch.log` | messaggi dell'ultimo avvio della finestra |
 | cartella dati di Electron (`Platypus`) | posizione della finestra e preferenze del guscio |

@@ -33,6 +33,10 @@ Node.js modules only, no npm packages: that's why browser mode starts without `n
 | `stats.js` | daily and weekly statistics, report |
 | `worldmap.js` | map of reality: territory, frontier, 7-dimensional trajectory |
 | `semantic.js` | context bubble and north star (TF-IDF, PCA, clusters, alignment) |
+| `grounding.js` | map versus territory: stale memories (disk mtimes with a 10 s cache, and other agents' edits), blind edits, invented paths, claims in replies and their evidence |
+| `surprise.js` | failure classifier (Jest, pytest, go, cargo, npm, tsc, Node, Python, PowerShell…), error excerpts and the files they cite, surprise score, reactions (corrects/insists/stops) and causal chains |
+| `bottega.js` | Workshop book: lessons per project deduced from the facts above, weight with a 30-day half-life, live learning and learning from the archive, Grandpa's hints, the section for `CLAUDE.md` |
+| `claudemd.js` | safe writer for the section in a project's `CLAUDE.md`: between markers, backup first, the rest byte for byte, atomic write |
 | `weather.js`, `releases.js`, `describe.js`, `demo.js`, `demoworld.js` | weather, git/gh releases, tool descriptions, demo |
 | `../i18n` | translations (key = Italian text, `locales/<language>/*.json`) |
 
@@ -54,6 +58,10 @@ Everything that depends on the operating system lives in three places: `osint.js
 | `GET /api/stats/costs`, `/api/stats/honors`, `/api/report` | statistics and report |
 | `POST /api/demo`, `/api/cowork`, `/api/cowork-scan` | demo, Cowork wing, Cowork scan |
 | `GET /i18n.js` | translations for the page |
+| `GET /api/grounding` | map versus territory and surprises of an agent or session (`sid`, `aid`, `replay`) |
+| `GET /api/bottega`, `/api/bottega/list`, `/api/bottega/hints` | a project's book (`sid`, `cwd` or `key`), the projects with a book, what Grandpa would say now |
+| `POST /api/bottega`, `/api/bottega/learn` | pin/ignore/unignore/forget a lesson; learn from the project's archive in the background |
+| `GET`/`POST /api/bottega/claudemd` | preview of the `CLAUDE.md` section; write it (only with `confirm: true`) |
 
 The server rejects requests whose `Host` or `Origin` is not `127.0.0.1`/`localhost` (protection against DNS rebinding and websites).
 
@@ -103,5 +111,6 @@ The benefit would be much smaller binaries (about 10 MB instead of 150) and less
 | `~/.claude/` | Claude Code's: read, never changed, except the hooks in `settings.json` if you install them |
 | `~/.platypus/settings.json` | office options |
 | `~/.platypus/stats.json` | daily and weekly statistics |
+| `~/.platypus/bottega/<key>.json` | the Workshop book of each project (one file per project folder) |
 | `~/.platypus/launch.log` | messages from the last window launch |
 | Electron data folder (`Platypus`) | window position and shell preferences |
