@@ -25,7 +25,7 @@ const worldmap = require('./worldmap');
 const semantic = require('./semantic');
 const grounding = require('./grounding');
 const surprise = require('./surprise');
-const { Bottega } = require('./bottega');
+const { Bottega, digest } = require('./bottega');
 const { TranscriptWatcher, SessionRegistry, claudeDir, findCoworkBases } = require('./sources');
 const { Weather } = require('./weather');
 const { describeTool } = require('./describe');
@@ -52,6 +52,18 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
   const state = new OfficeState({ settings: initialSettings });
   const stats = new Stats(state, statsPath || path.join(path.dirname(settingsPath), 'stats.json'));
   const bottega = new Bottega(bottegaDir || path.join(path.dirname(settingsPath), 'bottega'));
+  // il libro impara dalle sessioni aperte: gli stessi fatti della mappa, una volta al minuto
+  // (i casi già visti non contano due volte; la demo ha il suo libro finto)
+  function learnLive() {
+    let n = 0;
+    for (const s of state.sessions.values()) {
+      if (s.demo || !s.cwd) continue;
+      try { const agents = agentsOf(s); if (agents.length) n += bottega.learn(s.cwd, digest(s, agents)); } catch {}
+    }
+    return n;
+  }
+  const learnTimer = setInterval(learnLive, 60000);
+  learnTimer.unref && learnTimer.unref();
   state.includeCowork = !!includeCowork;
   const watcher = new TranscriptWatcher(state, { base });
   const registry = new SessionRegistry(state, watcher, { base });
@@ -222,6 +234,11 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
+  // gli agenti di una sessione con la loro mappa, per grounding.js, surprise.js e bottega.js
+  function agentsOf(s) {
+    return [s.main, ...s.subs.values()].filter(a => a.world).map(a => ({ id: a.id, name: displayName(a), world: a.world, mind: a.mind }));
+  }
+
   // mappa contro territorio di un agente (o di tutta la sessione): calcolata solo su richiesta
   function agentGrounding(q) {
     const isReplay = !!q.get('replay');
@@ -229,7 +246,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     const s = st && st.sessions.get(q.get('sid') || '');
     if (!s) return { ok: false };
     const aid = q.get('aid') || 'main';
-    const agents = [s.main, ...s.subs.values()].filter(a => a.world).map(a => ({ id: a.id, name: displayName(a), world: a.world, mind: a.mind }));
+    const agents = agentsOf(s);
     const only = aid === 'all' ? null : new Set([aid]);
     try {
       const opts = { only, replay: isReplay };
@@ -440,13 +457,14 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     for (const id of [...approvals.keys()]) finishApproval(id, null);
     if (replay) replay.stop();
     stats.stop();
+    clearInterval(learnTimer);
     bottega.stop();
     state.stop();
     for (const c of clients) try { c.end(); } catch {}
     server.close();
   }
 
-  return { state, stats, bottega, demo, server, ready, stop, port, base: base || claudeDir(), hooks: {
+  return { state, stats, bottega, learnLive, demo, server, ready, stop, port, base: base || claudeDir(), hooks: {
     install: () => hooks.install({ port, base }),
     uninstall: () => hooks.uninstall({ base }),
     status: () => hooks.status({ base }),

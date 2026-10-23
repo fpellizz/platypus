@@ -56,6 +56,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-'));
   const base = path.join(tmp, 'claude');
   fs.mkdirSync(path.join(base, 'projects'), { recursive: true });
+  // una sessione finta di Claude Code nella cartella di prova: il libro della bottega deve impararci qualcosa
+  const fakeCwd = path.join(tmp, 'progetto');
+  const fakeDir = path.join(base, 'projects', 'progetto-finto');
+  fs.mkdirSync(fakeDir, { recursive: true });
+  const T0 = Date.now() - 60000, at = k => new Date(T0 + k * 1000).toISOString();
+  const asst = (k, id, name, input) => ({ type: 'assistant', timestamp: at(k), sessionId: 'bottega-smoke-0001', cwd: fakeCwd, message: { id: 'm' + k, role: 'assistant', content: [{ type: 'tool_use', id, name, input }], usage: { input_tokens: 10, output_tokens: 10 } } });
+  const res = (k, id, err, content) => ({ type: 'user', timestamp: at(k), sessionId: 'bottega-smoke-0001', cwd: fakeCwd, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: err, content }] } });
+  fs.writeFileSync(path.join(fakeDir, 'bottega-smoke-0001.jsonl'), [
+    { type: 'user', timestamp: at(0), sessionId: 'bottega-smoke-0001', cwd: fakeCwd, message: { role: 'user', content: 'Sistema il login' } },
+    asst(1, 't1', 'Read', { file_path: path.join(fakeCwd, 'src', 'vecchio.ts') }), res(2, 't1', true, 'File does not exist.'),
+    asst(3, 't2', 'Bash', { command: 'npm test' }), res(4, 't2', true, 'FAIL src/a.test.ts\nTests: 1 failed'),
+    asst(5, 't3', 'Bash', { command: 'npm test' }), res(6, 't3', true, 'FAIL src/a.test.ts\nTests: 1 failed'),
+    asst(7, 't4', 'Bash', { command: 'npm test' }), res(8, 't4', true, 'FAIL src/a.test.ts\nTests: 1 failed'),
+  ].map(o => JSON.stringify(o)).join('\n') + '\n');
   const { startCore } = require(path.join(ROOT, 'src', 'core'));
   const port = 47900 + Math.floor(Math.random() * 90);
   const core = startCore({ port, base, settingsPath: path.join(tmp, 'settings.json'), statsPath: path.join(tmp, 'stats.json'), fetch: async () => { throw new Error('offline'); } });
@@ -91,6 +105,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(bk.ok && Array.isArray(bk.lessons) && /^[0-9a-f]{16}$/.test(bk.key), `libro della bottega del piano 1: ${bk.lessons ? bk.lessons.length : '-'} lezioni`);
   const bk404 = p1 ? await get(port, '/api/bottega', 'POST', JSON.stringify({ sid: p1.id, action: 'pin', id: 'nessuna' })) : { status: 0 };
   ok(bk404.status === 404, 'azione su una lezione che non c\'è → ' + bk404.status);
+  const learned = core.learnLive();
+  const fk = JSON.parse((await get(port, '/api/bottega?cwd=' + encodeURIComponent(fakeCwd))).body);
+  const kindsFk = new Set((fk.lessons || []).map(l => l.kind));
+  ok(learned > 0 && kindsFk.has('ghost-path') && kindsFk.has('loop-trap') && kindsFk.has('flaky-command'), `il libro impara da una sessione aperta: ${learned} casi, ${[...kindsFk].join(', ')}`);
+  ok(core.learnLive() === 0, 'imparare di nuovo dalla stessa sessione non aggiunge nulla');
+  const bkDemo = JSON.parse((await get(port, `/api/bottega?sid=${p1.id}`)).body);
+  ok(bkDemo.ok && bkDemo.lessons.length === 0, 'la demo non scrive nel libro');
   // scenario della sorpresa: catena completa e un agente che cerca altrove
   const chain = sc.ok ? sc.surprises.find(x => x.refs && x.refs.some(r => r.file === 'src/auth/refresh.ts' && r.line === 42)) : null;
   ok(chain && chain.value === 1 && chain.reasons.includes('usedToWork') && !chain.reasons.includes('tdd'), `scenario: il test che prima passava fallisce, sorpresa forte (${chain ? Math.round(chain.value * 100) + '%' : '-'})`);
