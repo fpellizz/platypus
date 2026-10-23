@@ -134,8 +134,35 @@ function shellResetTests(ok) {
   ok(w.shellCwd === 'C:/Users/Mario Rossi/shop' && ghosts.length === 1 && ghosts[0] === 'src/cart.ts', `cartella con spazi dopo «Shell cwd was reset»: ${w.shellCwd} · fantasma ${ghosts.join(', ')}`);
 }
 
+// libro: «Dimentica» deve reggere anche se la sessione che ha prodotto la lezione è ancora aperta
+// (l'apprendimento dal vivo ripresenta gli stessi casi ogni minuto)
+function forgetTests(ok) {
+  const { Bottega } = require(path.join(ROOT, 'src', 'core', 'bottega'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-'));
+  try {
+    const cwd = path.join(tmp, 'shop'), now = Date.now();
+    const old = [{ kind: 'ghost-path', key: 'src/old-cart.ts', sid: 's1', t: now - 20000, agent: 'Claude', excerpt: 'File does not exist.' }];
+    const b = new Bottega(path.join(tmp, 'bottega'));
+    const ghosts = bk => bk.view(cwd).lessons.filter(l => l.kind === 'ghost-path');
+    b.learn(cwd, old);
+    const id = ghosts(b)[0].id;
+    b.act(cwd, 'forget', id);
+    b.learn(cwd, old); // il giro successivo dell'apprendimento dal vivo
+    ok(!ghosts(b).length, 'lezione dimenticata: gli stessi casi non la riportano indietro');
+    b.stop();
+    const b2 = new Bottega(path.join(tmp, 'bottega')); // anche dopo un riavvio
+    b2.learn(cwd, old);
+    ok(!ghosts(b2).length, 'dimenticata anche dopo il riavvio dell\'app');
+    b2.learn(cwd, [{ ...old[0], sid: 's2', t: Date.now() + 60000 }]);
+    const g = ghosts(b2);
+    ok(g.length === 1 && g[0].count === 1, 'un caso nuovo, dopo «Dimentica», ricomincia la lezione da capo');
+    b2.stop();
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
+  forgetTests(ok);
   quietSubTests(ok);
   resumedSubTests(ok);
   archiveTests(ok);

@@ -93,7 +93,7 @@ function digest(session, agents, now = Date.now()) {
 class Bottega {
   constructor(dir = path.join(require('../paths').dataDir(), 'bottega')) {
     this.dir = dir;
-    this.books = new Map(); // chiave -> {key, name, cwd, lessons: {id: lesson}, learned: {}, dirty}
+    this.books = new Map(); // chiave -> {key, name, cwd, lessons: {id: lesson}, learned: {}, forgotten: {id: t}, dirty}
     this.timer = setInterval(() => this.save(), 30000);
     this.timer.unref && this.timer.unref();
   }
@@ -103,7 +103,7 @@ class Bottega {
     const key = projectKey(cwd);
     let b = this.books.get(key);
     if (!b) {
-      b = { key, name: path.basename(normDir(cwd)) || cwd, cwd: String(cwd || ''), lessons: {}, learned: {} };
+      b = { key, name: path.basename(normDir(cwd)) || cwd, cwd: String(cwd || ''), lessons: {}, learned: {}, forgotten: {} };
       try { Object.assign(b, JSON.parse(fs.readFileSync(path.join(this.dir, key + '.json'), 'utf8')), { key }); } catch {}
       b.dirty = false;
       this.books.set(key, b);
@@ -114,7 +114,7 @@ class Bottega {
   // il libro finto della demo: solo in memoria, mai sul disco
   seedDemo(cwd, cases) {
     const b = this.book(cwd);
-    b.demo = true; b.lessons = {}; b.learned = {};
+    b.demo = true; b.lessons = {}; b.learned = {}; b.forgotten = {};
     this.learn(cwd, cases);
     b.dirty = false;
   }
@@ -129,13 +129,16 @@ class Bottega {
     }
   }
 
-  // aggiunge i casi al libro; lo stesso caso (sessione, momento, agente, tipo, chiave) non conta due volte
+  // aggiunge i casi al libro; lo stesso caso (sessione, momento, agente, tipo, chiave) non conta due volte,
+  // e i casi di una lezione dimenticata non la riportano indietro (solo quelli successivi a "Dimentica")
   learn(cwd, cases) {
     const b = this.book(cwd);
+    const forgotten = b.forgotten || {};
     let added = 0;
     for (const c of cases) {
       if (!KINDS.includes(c.kind) || !c.key) continue;
       const id = sha(c.kind + '|' + c.key);
+      if (forgotten[id] && !(c.t > forgotten[id])) continue;
       let l = b.lessons[id];
       if (!l) l = b.lessons[id] = { id, kind: c.kind, key: c.key, count: 0, sessions: [], first: c.t, last: c.t, evidence: [], seen: [], pinned: false, ignored: false };
       const ev = c.sid + '|' + c.t + '|' + c.agent;
@@ -168,7 +171,14 @@ class Bottega {
     if (action === 'pin') { l.pinned = !l.pinned; l.ignored = false; }
     else if (action === 'ignore') { l.ignored = true; l.pinned = false; }
     else if (action === 'unignore') l.ignored = false;
-    else if (action === 'forget') delete b.lessons[id];
+    else if (action === 'forget') {
+      delete b.lessons[id];
+      // ricorda il momento: i casi già visti (rilette ogni minuto dalla sessione aperta) non la ricreano
+      b.forgotten = b.forgotten || {};
+      b.forgotten[id] = Math.max(Date.now(), l.last || 0);
+      const ids = Object.keys(b.forgotten);
+      if (ids.length > 500) ids.sort((x, y) => b.forgotten[x] - b.forgotten[y]).slice(0, ids.length - 500).forEach(x => delete b.forgotten[x]);
+    }
     else return false;
     b.dirty = true;
     return true;
