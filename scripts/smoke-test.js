@@ -88,7 +88,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const st = JSON.parse((await get(port, '/api/state')).body);
   ok(st.sessions.length >= 4, `demo: ${st.sessions.length} piani, ${st.sessions.reduce((a, s) => a + s.subs.length, 0)} sottoagenti`);
   const sid = st.sessions[0].id;
-  for (const p of ['/', '/i18n.js', '/i18n-runtime.js', '/game.js', '/worldmap.js', '/report', '/api/settings', '/api/stats/costs', '/api/report']) {
+  for (const p of ['/', '/i18n.js', '/i18n-runtime.js', '/game.js', '/worldmap.js', '/bottega.js', '/report', '/api/settings', '/api/stats/costs', '/api/report']) {
     const r = await get(port, p);
     ok(r.status === 200, `GET ${p} → ${r.status}`);
   }
@@ -127,6 +127,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(lr.ok && lr.learning.total === 1 && fk2.learnedSessions === 1 && gl && gl.sessions.length === 2 && gl.level === 'lesson', `imparare dall'archivio: ${fk2.learnedSessions} sessione letta, il percorso inventato ora è una lezione (${gl ? gl.sessions.length : 0} sessioni)`);
   const lr2 = JSON.parse((await get(port, '/api/bottega/learn', 'POST', JSON.stringify({ cwd: fakeCwd }))).body);
   ok(lr2.ok && lr2.learning.total === 0, 'una sessione già letta e non cambiata non si rilegge');
+  core.bottega.save();
+  const books = JSON.parse((await get(port, '/api/bottega/list')).body);
+  const fb = (books.books || []).find(b => b.cwd === fakeCwd);
+  ok(fb && fb.strong >= 1 && fb.name === 'progetto', `scheda BOTTEGA: ${books.books ? books.books.length : 0} libri, «${fb && fb.name}» con ${fb && fb.strong} lezioni`);
+  const byKey = fb ? JSON.parse((await get(port, '/api/bottega?key=' + fb.key)).body) : {};
+  ok(byKey.ok && byKey.lessons.length === fk2.lessons.length, 'il libro si apre anche dalla sua chiave');
+  const ev = gl && gl.evidence.find(e => e.sid === 'bottega-smoke-0000');
+  const rp = ev ? JSON.parse((await get(port, '/api/replay', 'POST', JSON.stringify({ action: 'start', key: ev.sid, at: ev.t }))).body) : {};
+  ok(rp.ok, 'dalla prova al replay della sessione, da quel momento');
+  await get(port, '/api/replay', 'POST', JSON.stringify({ action: 'stop' }));
   const hn = JSON.parse((await get(port, '/api/bottega/hints?sid=bottega-smoke-0001')).body);
   ok(hn.ok && Array.isArray(hn.hints), `il Nonno risponde: ${hn.hints ? hn.hints.length : '-'} cose da dire`);
   core.state.setSettings({ bottegaLearn: false });

@@ -135,6 +135,7 @@ function toast(msg, ok = true) {
   clearTimeout(toast._t); toast._t = setTimeout(() => { el.hidden = true; }, 3500);
 }
 async function sessionAction(what, sid) {
+  if (what === 'book') return window.openBottega && openBottega(sid);
   if (what === 'focus') {
     const r = await api('/api/focus', { sid });
     toast(r.ok ? (r.approx ? tr('Ho portato in primo piano {app} (non sono sicuro della finestra esatta)', { app: r.app || tr('l\'app') }) : tr('Finestra in primo piano: {app}', { app: r.app || '' })) : (r.reason || tr('Non trovata')), r.ok);
@@ -474,7 +475,7 @@ function updateBoard() {
 // ---- schede del tabellone: sessioni, costi nel tempo, onori
 let boardTab = 'sessions', costsData = null, costsT = 0, honorsData = null, honorsT = 0;
 function boardTabs() {
-  return `<div class="tabs">${[['sessions', tr('SESSIONI')], ['costs', tr('COSTI')], ['honors', tr('ONORI')]].map(([k, l]) => `<button data-tab="${k}" class="${boardTab === k ? 'on' : ''}">${l}</button>`).join('')}<button data-do="report" title="${esc(tr('Apre il report di oggi'))}">${tr('REPORT DI OGGI')}</button></div>`;
+  return `<div class="tabs">${[['sessions', tr('SESSIONI')], ['costs', tr('COSTI')], ['honors', tr('ONORI')], ['bottega', tr('BOTTEGA')]].map(([k, l]) => `<button data-tab="${k}" class="${boardTab === k ? 'on' : ''}">${l}</button>`).join('')}<button data-do="report" title="${esc(tr('Apre il report di oggi'))}">${tr('REPORT DI OGGI')}</button></div>`;
 }
 function bindBoardTabs() {
   for (const b of $('#board').querySelectorAll('[data-tab]')) b.onclick = () => { boardTab = b.dataset.tab; boardSig = ''; updateBoard(); };
@@ -533,12 +534,22 @@ async function loadCosts() { if (Date.now() - costsT < 60000 && costsData) retur
 async function loadHonors() { if (Date.now() - honorsT < 60000 && honorsData) return; honorsT = Date.now(); try { honorsData = await (await fetch('/api/stats/honors')).json(); } catch {} }
 let tabSig = '';
 async function renderBoardTab() {
-  if (boardTab === 'costs') await loadCosts(); else await loadHonors();
-  const html = boardTab === 'costs' ? costsHtml() : honorsHtml();
+  if (boardTab === 'costs') await loadCosts(); else if (boardTab === 'bottega') await loadBooks(); else await loadHonors();
+  const html = boardTab === 'costs' ? costsHtml() : boardTab === 'bottega' ? booksHtml() : honorsHtml();
   if (html === tabSig) return;
   tabSig = html;
   $('#board').innerHTML = boardTabs() + html;
   bindBoardTabs();
+  for (const r of $('#board').querySelectorAll('tr[data-book]')) r.onclick = () => window.openBottega && openBottega(null, null, { key: r.dataset.book });
+}
+let booksData = null, booksT = 0;
+async function loadBooks() { if (Date.now() - booksT < 15000 && booksData) return; booksT = Date.now(); try { booksData = (await (await fetch('/api/bottega/list')).json()).books || []; } catch {} }
+function booksHtml() {
+  const d = booksData || [];
+  return `<h2>${tr('LIBRO DELLA BOTTEGA')} <span>${tr('la memoria di ogni progetto, dedotta dalle sessioni')}</span></h2>` +
+    (d.length ? `<table><thead><tr><th>${tr('PROGETTO')}</th><th>${tr('LEZIONI')}</th><th>${tr('OSSERVAZIONI')}</th><th>${tr('ULTIMO CASO')}</th></tr></thead><tbody>${d.map(b => `<tr data-book="${esc(b.key)}" class="click"><td class="proj">${esc(b.name)}</td><td class="num">${b.strong}</td><td class="num">${b.lessons - b.strong}</td><td>${esc(new Date(b.last).toLocaleDateString(AO_I18N.locale || 'it-IT'))}</td></tr>`).join('')}</tbody></table>`
+      : `<p>${tr('Ancora nessun libro: le lezioni nascono mentre l\'ufficio segue le sessioni, oppure dal pulsante «Impara dall\'archivio» nel libro di un piano.')}</p>`) +
+    `<div class="foot">${tr('Le lezioni sono deduzioni dai fatti, non regole certe. Restano in .platypus/bottega.')}</div>`;
 }
 function costsHtml() {
   const d = costsData || [];
@@ -1170,7 +1181,7 @@ function updateFloorLabels() {
       `<em>${tr('{n} token', { n: tokText((s.tokens || {}).total) })}</em></div>` +
       (alertsOf(s).length ? `<ul class="alerts">${alertsOf(s).slice(0, 4).map(a => `<li class="lv-${a.level}">${esc(a.text)}</li>`).join('')}</ul>` : '') +
       `<div class="t">${esc(s.cwd || '')}</div>` +
-      (!s._replay && !s.demo ? '<div class="btns"><button data-do="focus" title="' + esc(tr('Porta in primo piano il terminale o la finestra di questa sessione')) + '">' + tr('FINESTRA') + '</button><button data-do="folder">' + tr('CARTELLA') + '</button></div>' : ''));
+      (!s._replay ? '<div class="btns">' + (!s.demo ? '<button data-do="focus" title="' + esc(tr('Porta in primo piano il terminale o la finestra di questa sessione')) + '">' + tr('FINESTRA') + '</button><button data-do="folder">' + tr('CARTELLA') + '</button>' : '') + '<button data-do="book" title="' + esc(tr('Le lezioni di questo progetto, dedotte dalle sessioni')) + '">' + tr('LIBRO') + '</button></div>' : ''));
     for (const btn of b.querySelectorAll('button[data-do]')) btn.onclick = () => sessionAction(btn.dataset.do, s.id);
     b.style.pointerEvents = 'auto';
     placeLabel(b, bx * scale, (WALL_H + 10) * scale, Math.min(320, avail) * scale);
@@ -3172,7 +3183,7 @@ window.addEventListener('keydown', e => {
   else if (k === 'escape') {
     // dall'area relax si torna in atrio, se non c'è niente di aperto da chiudere
     if (viewSid === 'relax' && $('#help').hidden && $('#settings').hidden && $('#search').hidden && !(window.worldMapOpen && worldMapOpen())) goTo(null);
-    if (window.closeWorldMap) closeWorldMap(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; $('#settings').hidden = true; roomListKey = null;
+    if (window.closeWorldMap) closeWorldMap(); if (window.closeBottega) closeBottega(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; $('#settings').hidden = true; roomListKey = null;
   }
 });
 window.addEventListener('resize', () => { if (snap) reconcile(); });

@@ -177,6 +177,24 @@ class Bottega {
     return { key: b.key, name: b.name, cwd: b.cwd, learnedSessions: Object.keys(b.learned || {}).length, learning: job, lessons };
   }
 
+  // i progetti che hanno un libro (sul disco o già in memoria), per la scheda BOTTEGA dell'atrio
+  list(now = Date.now()) {
+    const keys = new Set(this.books.keys());
+    try { for (const f of fs.readdirSync(this.dir)) if (/^[0-9a-f]{16}\.json$/.test(f)) keys.add(f.slice(0, 16)); } catch {}
+    const out = [];
+    for (const key of keys) {
+      let b = this.books.get(key);
+      if (!b) { try { b = JSON.parse(fs.readFileSync(path.join(this.dir, key + '.json'), 'utf8')); } catch { continue; } }
+      if (!b.cwd) continue;
+      const ls = Object.values(b.lessons || {});
+      if (!ls.length) continue;
+      const strong = ls.filter(l => !l.ignored && (l.pinned || (l.count > 1 && weightOf(l, now) >= LESSON_WEIGHT))).length;
+      out.push({ key, name: b.name, cwd: b.cwd, lessons: ls.length, strong, last: Math.max(...ls.map(l => l.last || 0)) });
+    }
+    return out.sort((x, y) => y.last - x.last);
+  }
+  cwdOfKey(key) { const b = this.list().find(x => x.key === key); return b ? b.cwd : ''; }
+
   // rilegge le sessioni passate del progetto (non quelle aperte, né quelle già lette e non cambiate)
   // con un OfficeState senza interfaccia, a blocchi, senza mai bloccare il server
   learnFromArchive(cwd, { base, settings, liveIds = new Set(), chunk = 1500 } = {}) {

@@ -7,11 +7,12 @@
 //   POST /api/cowork         {on}
 //   GET/POST /api/settings   soglie degli avvisi, budget, prezzo di stima
 //   GET  /api/archive        sessioni passate
-//   POST /api/replay         {action: start|play|pause|speed|seek|stop, key, value}
+//   POST /api/replay         {action: start|play|pause|speed|seek|stop, key, value, at} (at: parti da quel momento, in pausa)
 //   POST /api/focus          {sid}   porta in primo piano la finestra della sessione
 //   POST /api/resume         {key}   riprende una sessione chiusa in un nuovo terminale
 //   POST /api/open-folder    {sid|key}
-//   GET  /api/bottega        {sid|cwd}  il Libro della bottega del progetto (lezioni dedotte dai fatti)
+//   GET  /api/bottega        {sid|cwd|key}  il Libro della bottega del progetto (lezioni dedotte dai fatti)
+//   GET  /api/bottega/list   i progetti che hanno un libro
 //   POST /api/bottega        {sid|cwd, action: pin|ignore|unignore|forget, id}
 //   POST /api/bottega/learn  {sid|cwd}  impara dalle sessioni passate del progetto (in background)
 //   GET  /api/bottega/hints  {sid}  cosa direbbe il Nonno adesso: azioni in corso che corrispondono a una lezione
@@ -261,7 +262,9 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
   function projectCwd(q) {
     const sid = q.sid || '';
     const s = sid && (state.sessions.get(sid) || (replay && replay.state.sessions.get(sid)));
-    return s ? s.cwd : (typeof q.cwd === 'string' ? q.cwd.slice(0, 500) : '');
+    if (s) return s.cwd;
+    if (typeof q.key === 'string' && /^[0-9a-f]{16}$/.test(q.key)) return bottega.cwdOfKey(q.key);
+    return typeof q.cwd === 'string' ? q.cwd.slice(0, 500) : '';
   }
 
   function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); }
@@ -351,6 +354,9 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
           replay.title = info ? (info.kind === 'cowork' ? info.title || info.project : info.project) : '';
           replay.on('frame', sendReplayFrame);
           if (j.speed) replay.control('speed', j.speed);
+          // dal Libro della bottega: il replay parte poco prima del momento della prova, in pausa
+          const at = Number(j.at);
+          if (at > replay.start) { replay.seek(Math.max(0, (at - 5000 - replay.start) / Math.max(1, replay.end - replay.start))); replay.control('pause'); }
           broadcast(payload());
           return json(res, 200, { ok: true, key: j.key });
         }
@@ -416,6 +422,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     if (url.pathname === '/api/agentmap') return json(res, 200, agentMap(url.searchParams));
     if (url.pathname === '/api/agentmind') return json(res, 200, agentMind(url.searchParams));
     if (url.pathname === '/api/grounding') return json(res, 200, agentGrounding(url.searchParams));
+    if (url.pathname === '/api/bottega/list') return json(res, 200, { ok: true, books: bottega.list() });
     if (url.pathname === '/api/bottega/hints') {
       const s = state.sessions.get(url.searchParams.get('sid') || '');
       if (!s || !s.cwd) return json(res, 404, { ok: false });
