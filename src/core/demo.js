@@ -64,7 +64,7 @@ class Demo {
       this.world.seed(x, x.main, 14);
       for (const a of x.subs.values()) this.world.seed(x, a, a._demoStuck ? 10 : a._demoDrift ? 24 : 5 + Math.floor(Math.random() * 14), a._demoStuck ? 'npm run test:e2e' : null);
     }
-    this.groundingScenario(this.ids.a, { explore: team[0], architect: arch, tester: team[2] }, scale);
+    this.groundingScenario(this.ids.a, { explore: team[0], architect: arch, tester: team[2], plan: planId }, scale);
     this.timer = setInterval(() => this.step(), 900);
     this.state.touch();
   }
@@ -74,10 +74,10 @@ class Demo {
   groundingScenario(sid, ids, scale) {
     const s = this.state.sessions.get(sid);
     if (!s) return;
-    const ag = { main: s.main, explore: s.subs.get(ids.explore), architect: s.subs.get(ids.architect), tester: s.subs.get(ids.tester) };
-    if (!ag.explore || !ag.architect || !ag.tester) return;
+    const ag = { main: s.main, explore: s.subs.get(ids.explore), architect: s.subs.get(ids.architect), tester: s.subs.get(ids.tester), plan: s.subs.get(ids.plan) };
+    if (!ag.explore || !ag.architect || !ag.tester || !ag.plan) return;
     s.demoDisk = new Map([['src/auth/oldToken.ts', { exists: false }]]);
-    const hold = Date.now() + 120000 * scale; // intanto questi agenti non fanno altro: lo scenario resta leggibile
+    const hold = Date.now() + 150000 * scale; // intanto questi agenti non fanno altro: lo scenario resta leggibile
     for (const a of Object.values(ag)) a._demoHold = hold;
     const at = (sec, fn) => { const tm = setTimeout(() => { this.world.timers.delete(tm); try { fn(); } catch {} }, sec * 1000 * scale); this.world.timers.add(tm); };
     const tool = (sec, a, name, input, out, err, dur = 1) => {
@@ -105,6 +105,18 @@ class Demo {
     at(50, () => this.hook(sid, 'UserPromptSubmit', { prompt: tr('Hai lanciato i test?') }));
     tool(53, s.main, 'Bash', { command: 'npm test' }, 'Tests: 42 passed, 42 total', false, 7);
     reply(62, tr('Ho lanciato {cmd}: ora tutti i test passano.', { cmd: '`npm test`' }));
+    // sorpresa e cause: una catena completa (il test che prima passava fallisce, segue la traccia, torna verde)
+    // e un agente che cerca altrove (l'errore cita migrate.ts, lui modifica un componente grafico)
+    const trace = "FAIL tests/auth.test.ts\n  ● refresh › renews the token\n    TypeError: Cannot read properties of undefined (reading 'exp')\n      at renew (src/auth/refresh.ts:42:18)\n      at Object.<anonymous> (tests/auth.test.ts:17:5)\n      at node_modules/jest-circus/build/utils.js:298:28\nTests: 1 failed, 41 passed, 42 total";
+    tool(64, ag.tester, 'Read', { file_path: 'package.json' }, '{ "scripts": { "test": "jest" } }');
+    tool(67, ag.tester, 'Read', { file_path: 'tests/auth.test.ts' }, "import { renew } from '../src/auth/refresh';");
+    tool(70, ag.tester, 'Bash', { command: 'npm test' }, 'Tests: 42 passed, 42 total', false, 3);
+    tool(76, ag.tester, 'Bash', { command: 'npm test' }, trace, true, 3);
+    tool(81, ag.tester, 'Read', { file_path: 'src/auth/refresh.ts' }, "import { session } from './session';");
+    tool(85, ag.tester, 'Edit', { file_path: 'src/auth/refresh.ts' }, 'ok');
+    tool(89, ag.tester, 'Bash', { command: 'npm test' }, 'Tests: 42 passed, 42 total', false, 3);
+    tool(78, ag.plan, 'Bash', { command: 'npx tsc --noEmit' }, "src/db/migrate.ts(12,5): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.", true, 2);
+    tool(84, ag.plan, 'Edit', { file_path: 'src/ui/components/Menu.tsx' }, 'ok');
   }
 
   stop() {
