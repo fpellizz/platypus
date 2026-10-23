@@ -67,6 +67,8 @@ function relKey(p, cwd) {
   if (!x) return null;
   if (/^https?:\/\//i.test(x)) return webKey(x);
   const c = normSlashes(cwd);
+  // Git Bash su Windows (la shell di Claude Code): /d/dev/x e /cygdrive/d/dev/x sono D:/dev/x
+  if (/^[A-Za-z]:\//.test(c)) { const m = /^\/(?:cygdrive\/)?([A-Za-z])(?:\/|$)/.exec(x); if (m) x = m[1].toUpperCase() + ':/' + x.slice(m[0].length); }
   if (c && (x.toLowerCase() === c.toLowerCase())) return '.';
   if (c && x.toLowerCase().startsWith(c.toLowerCase() + '/')) return x.slice(c.length + 1);
   if (/^([A-Za-z]:\/|\/|~)/.test(x)) return 'abs:' + x;

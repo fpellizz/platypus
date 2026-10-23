@@ -106,11 +106,27 @@ function archiveTests(ok) {
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
+// mappa: percorsi dei comandi Git Bash su Windows (/d/dev/... è D:\dev\...)
+function gitBashPathTests(ok) {
+  const { AgentWorld, relKey } = require(path.join(ROOT, 'src', 'core', 'worldmap'));
+  const cwd = 'D:\\dev\\shop';
+  const w = new AgentWorld();
+  w.start('a', 'Bash', { command: 'cd /d/dev/shop && cat src/cart.ts' }, 1000, cwd);
+  w.end('a', false, { content: 'ok' }, null, 1100, cwd);
+  w.start('b', 'Read', { file_path: 'D:\\dev\\shop\\src\\cart.ts' }, 1200, cwd);
+  w.end('b', false, { content: 'export const cart = 1' }, null, 1300, cwd);
+  const keys = [...w.nodes.keys()].filter(k => !/^cmd:/.test(k) && k !== '.'); // "." è la cartella del cd
+  ok(keys.length === 1 && keys[0] === 'src/cart.ts', 'Git Bash «cd /d/dev/shop && cat src/cart.ts»: lo stesso luogo del Read, nel progetto (' + keys.join(', ') + ')');
+  ok(relKey('/d/dev/other/x.ts', cwd) === 'abs:D:/dev/other/x.ts' && relKey('/cygdrive/d/dev/shop/a.ts', cwd) === 'a.ts', 'Git Bash: fuori dal progetto resta assoluto, /cygdrive/d vale come /d');
+  ok(relKey('/d/dev/shop/a.ts', '/home/u/shop') === 'abs:/d/dev/shop/a.ts', 'su Linux e macOS /d/... resta un percorso normale');
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
   quietSubTests(ok);
   resumedSubTests(ok);
   archiveTests(ok);
+  gitBashPathTests(ok);
 }
 
 module.exports = { run };
