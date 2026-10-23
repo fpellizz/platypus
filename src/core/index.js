@@ -11,7 +11,7 @@
 //   POST /api/focus          {sid}   porta in primo piano la finestra della sessione
 //   POST /api/resume         {key}   riprende una sessione chiusa in un nuovo terminale
 //   POST /api/open-folder    {sid|key}
-//   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca
+//   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca, percorsi inventati
 
 const { dataDir } = require('../paths');
 const http = require('http');
@@ -227,7 +227,8 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     const agents = [s.main, ...s.subs.values()].filter(a => a.world).map(a => ({ id: a.id, name: displayName(a), world: a.world }));
     const only = aid === 'all' ? null : new Set([aid]);
     try {
-      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, { only, replay: isReplay }), ghosts: [], claims: [], score: null };
+      const opts = { only, replay: isReplay };
+      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, opts), ...grounding.findGhosts(s, agents, s.cwd, opts), claims: [], score: null };
     } catch (e) { return { ok: false, error: e.message }; }
   }
 

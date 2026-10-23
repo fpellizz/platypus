@@ -118,9 +118,81 @@ function groundingTests(ok) {
   }
 }
 
+function ghostTests(ok) {
+  const { missingPathsInOutput } = require(path.join(ROOT, 'src', 'core', 'worldmap'));
+  const sess = (extra) => ({ id: 'g' + (++seq), cwd: '', kind: 'code', ...extra });
+
+  // fonte 2: output dei comandi (inglese e italiano, POSIX e Windows)
+  const outputs = [
+    ['cat: src/missing.ts: No such file or directory', 'src/missing.ts'],
+    ["ls: cannot access 'docs/old.md': No such file or directory", 'docs/old.md'],
+    ["FileNotFoundError: [Errno 2] No such file or directory: 'data/input.csv'", 'data/input.csv'],
+    ["Error: ENOENT: no such file or directory, open 'config/app.json'", 'config/app.json'],
+    ["Error: Cannot find module './lib/helper'", './lib/helper'],
+    ["src/a.ts(3,20): error TS2307: Cannot find module './session' or its corresponding type declarations.", './session'],
+    ["Get-Content : Cannot find path 'C:\\proj\\src\\nope.ps1' because it does not exist.", 'C:\\proj\\src\\nope.ps1'],
+    ["Get-Content : Impossibile trovare il percorso 'C:\\proj\\docs\\vecchio.md' perché non esiste.", 'C:\\proj\\docs\\vecchio.md'],
+    ['cat: appunti/note.txt: File o directory non esistente', 'appunti/note.txt'],
+    ["python: can't open file 'C:\\\\proj\\\\run.py': [Errno 2] No such file or directory", 'C:\\proj\\run.py'],
+    ["error: pathspec 'src/x.js' did not match any file(s) known to git", 'src/x.js'],
+    ["ls: cannot access '/home/max/My Docs/a.md': No such file or directory", '/home/max/My Docs/a.md'],
+  ];
+  for (const [out, want] of outputs) {
+    const got = missingPathsInOutput(out).map(g => g.path);
+    ok(got.length === 1 && got[0] === want, `output: ${want}` + (got[0] === want ? '' : ` (trovato: ${JSON.stringify(got)})`));
+  }
+  const none = ['The system cannot find the path specified.', 'Il sistema non riesce a trovare il percorso specificato.', "src/a.ts(1,1): error TS2304: Cannot find name 'foo'.", '3 passing (12ms)'];
+  ok(none.every(o => !missingPathsInOutput(o).length), 'output senza percorsi: nessun fantasma');
+
+  // fonte 3: risposte
+  const replies = [
+    ['Ho aggiornato `src/auth/session.ts` e il file docs/guida.md.', ['src/auth/session.ts', 'docs/guida.md']],
+    ['I read `package.json` and src/app.ts.', ['package.json', 'src/app.ts']],
+    ['Ho modificato src\\ui\\Menu.tsx come richiesto', ['src\\ui\\Menu.tsx']],
+    ['Usa `Node.js` 20, vedi https://example.com/a/b.js, versione 3.5 o v1.2.3, cioè e.g. i.e.', []],
+    ["Esempio:\n```js\nimport x from './foo.ts'\n```\nfine", []],
+  ];
+  for (const [text, want] of replies) {
+    const got = grounding.pathsInReply(text).map(p => p.path);
+    ok(JSON.stringify(got) === JSON.stringify(want), `risposta: ${JSON.stringify(want)}` + (JSON.stringify(got) === JSON.stringify(want) ? '' : ` (trovato: ${JSON.stringify(got)})`));
+  }
+
+  // fonte 1 e 2 dentro la mappa, e "poi creato"
+  {
+    const a = agent('a', 'TEST-RUNNER'), b = agent('b', 'CLAUDE');
+    act(a.world, 'Read', 'src/auth/oldToken.ts', 1000, { err: true, out: 'File does not exist. Note: your current working directory is /proj.' });
+    act(a.world, 'Read', 'src/later.ts', 1000, { err: true, out: '<tool_use_error>File does not exist.</tool_use_error>' });
+    act(b.world, 'Write', 'src/later.ts', 2000);
+    a.world.start('r1', 'Bash', { command: 'cd tools && cat conf/x.yml' }, 3000, '/proj', 0);
+    a.world.end('r1', true, { content: 'cat: conf/x.yml: No such file or directory' }, {}, 3100, '/proj');
+    const r = grounding.findGhosts(sess({ kind: 'cowork' }), [a, b], '/proj');
+    const by = k => r.ghosts.find(g => g.key === k);
+    ok(by('src/auth/oldToken.ts') && by('src/auth/oldToken.ts').source === 'tool' && !by('src/auth/oldToken.ts').createdLater, 'Read fallito: fantasma');
+    ok(by('src/later.ts') && by('src/later.ts').createdLater, 'creato dopo da un altro agente: era un\'intenzione');
+    ok(by('tools/conf/x.yml') && by('tools/conf/x.yml').source === 'output', 'output del comando, relativo alla cartella della shell');
+  }
+
+  // fonte 3 sul disco vero
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-ghost-'));
+    try {
+      fs.mkdirSync(path.join(dir, 'src', 'auth'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'src', 'auth', 'real.ts'), 'x');
+      const a = agent('a', 'CLAUDE'), b = agent('b', 'BUILDER');
+      a.world.reply(5000, 'Ho corretto `src/auth/real.ts` (in `auth/real.ts`, cioè `real.ts`), poi src/auth/fake.ts e `src/new.ts`.');
+      act(b.world, 'Write', 'src/new.ts', 6000);
+      const r = grounding.findGhosts(sess({ cwd: dir }), [a, b], dir);
+      ok(r.ghosts.length === 1 && r.ghosts[0].key === 'src/auth/fake.ts' && r.ghosts[0].source === 'reply', 'risposta: solo il file che non c\'è e che nessuno ha creato');
+      ok(!grounding.findGhosts(sess({ cwd: dir }), [a, b], dir, { replay: true }).ghosts.length, 'replay: le risposte non si controllano sul disco');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+}
+
 function run(ok) {
   console.log('mappa contro territorio');
   groundingTests(ok);
+  console.log('percorsi inventati');
+  ghostTests(ok);
 }
 
 module.exports = { run };

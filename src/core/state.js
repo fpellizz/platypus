@@ -425,7 +425,10 @@ class OfficeState extends EventEmitter {
     noteModel(a, line);
     // anche la parte vecchia del transcript disegna la mappa (senza esiti, che stanno nelle righe "user")
     const c = line.message.content;
-    if (Array.isArray(c)) for (const b of c) if (b && b.type === 'tool_use') this.worldStart(s, a, b.id, b.name, b.input, Date.parse(line.timestamp) || this.now());
+    if (Array.isArray(c)) for (const b of c) {
+      if (b && b.type === 'tool_use') this.worldStart(s, a, b.id, b.name, b.input, Date.parse(line.timestamp) || this.now());
+      else if (b && b.type === 'text' && b.text) this.worldReply(s, a, Date.parse(line.timestamp) || this.now(), b.text);
+    }
   }
 
   // parte vecchia del transcript (non riletta per l'animazione): esiti, richieste e compattazioni
@@ -455,6 +458,10 @@ class OfficeState extends EventEmitter {
   worldStart(s, a, id, name, input, ts) {
     try { (a.world || (a.world = new AgentWorld())).start(id, name, input, ts || this.now(), s.cwd, a.ctx || 0); } catch {}
     try { const m = this.mindOf(s, a); m.action(id, ts || this.now(), describeTool(name, input), actionText(name, input)); const p = m.byTool.get(id); if (p) p.tool = name; } catch {}
+  }
+  // testo completo delle ultime risposte: serve a confrontare quello che dice con quello che c'è (grounding.js)
+  worldReply(s, a, ts, text) {
+    try { (a.world || (a.world = new AgentWorld())).reply(ts || this.now(), text); } catch {}
   }
   worldEnd(s, a, id, isErr, block, line, ts) {
     try { if (a.world) a.world.end(id, isErr, block, line, ts || this.now(), s.cwd); } catch {}
@@ -515,6 +522,7 @@ class OfficeState extends EventEmitter {
           if (typeof b.thinking === 'string' && b.thinking.trim()) this.mindOf(s, a).add('thinking', ts, clip(b.thinking, 80), b.thinking);
         } else if (b.type === 'text' && b.text && b.text.trim()) {
           this.mindOf(s, a).add('reply', ts, clip(b.text, 80), b.text);
+          this.worldReply(s, a, ts, b.text);
           const end = msg.stop_reason === 'end_turn' && !agentId;
           if (end) this.setAgent(a, 'idle', tr('Ha finito: tocca a te'), ts);
           else this.setAgent(a, 'writing', tr('Scrive: «{text}»', { text: clip(b.text, 44) }), ts);

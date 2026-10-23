@@ -24,6 +24,38 @@ const MAX_EDITS = 20;
 const STALE_ERR = /modified since (it was )?(last )?read|has been (unexpectedly )?modified|changed since (it was )?(last )?read/i;
 // i luoghi che sono file del progetto (non comandi, siti, sottoagenti o file fuori dalla cartella)
 function isProjectFile(key) { return !!key && key !== '.' && !/^(abs|web|cmd|agent|tool):/.test(key); }
+const MAX_REPLIES = 20, REPLY_CHARS = 8000;
+// file che non ci sono: errori di Read/Edit e righe dell'output dei comandi (inglese e italiano)
+const MISSING_TOOL = /does not exist|ENOENT|No such file|non esiste|File o directory non esistente/i;
+const MISSING_OUT = [
+  /^(?:[\w.\-]+: )*(?:cannot access |cannot open |can't open )?(['"`]?)([^'"`\n]+?)\1: (?:No such file or directory|File o directory non esistente)/gim, // cat: x: No such file…
+  /No such file or directory: (['"`]?)([^'"`\n]+)\1/gi,                                                        // Python
+  /no such file or directory, \w+ (['"`])([^'"`\n]+)\1/gi,                                                   // Node (ENOENT)
+  /can't open file (['"`])([^'"`\n]+)\1/gi,                                                                    // python x.py
+  /cannot find (?:module |file |path )?(['"`])([^'"`\n]+)\1/gi,                                              // Node, tsc, PowerShell
+  /Impossibile trovare (?:il percorso |il file |il modulo )?(['"`])([^'"`\n]+)\1/gi,                         // PowerShell in italiano
+  /pathspec (['"`])([^'"`\n]+)\1 did not match any files?/gi,                                                  // git
+];
+// percorsi dei file mancanti citati in un output (validati con le stesse regole dei comandi)
+function missingPathsInOutput(text) {
+  const out = [];
+  const s = String(text || '').slice(0, 60000);
+  if (!/No such file|ENOENT|cannot find|can't open|Impossibile trovare|non esistente|did not match any file/i.test(s)) return out;
+  for (const re of MISSING_OUT) {
+    re.lastIndex = 0;
+    let m, guard = 0;
+    while ((m = re.exec(s)) && guard++ < 200) {
+      const cand = m[2].trim().replace(/\\\\/g, '\\').replace(/[.,;]+$/, '');
+      const ok = /\s/.test(cand) ? /^([A-Za-z]:[\\/]|\/|\.{0,2}[\\/])/.test(cand) && EXT.test(cand) : pathsInCommand(cand)[0] === cand;
+      if (ok && !out.some(o => o.path === cand)) out.push({ path: cand, line: lineAround(s, m.index) });
+    }
+  }
+  return out.slice(0, 20);
+}
+function lineAround(s, i) {
+  const a = s.lastIndexOf('\n', i) + 1, b = s.indexOf('\n', i);
+  return s.slice(a, b < 0 ? s.length : b).trim().slice(0, 160);
+}
 
 function normSlashes(p) { return String(p || '').replace(/\\/g, '/').replace(/\/+$/, ''); }
 // percorso relativo alla cartella della sessione; fuori dal progetto diventa "abs:<percorso>"
@@ -109,6 +141,20 @@ class AgentWorld {
     this.steps = [];
     this.open = new Map();  // toolUseId -> step
     this.shellCwd = null;   // cartella corrente della shell dell'agente
+    this.replies = [];      // ultime risposte complete {t, text}, solo in memoria
+  }
+  reply(t, text) {
+    const x = String(text || '').trim();
+    if (!x) return;
+    this.replies.push({ t, text: x.slice(0, REPLY_CHARS) });
+    if (this.replies.length > MAX_REPLIES) this.replies.shift();
+  }
+  // un file che l'agente cerca e che non c'è: "fantasma" (la prima volta che succede)
+  ghost(key, t, src, line) {
+    if (!isProjectFile(key) && !String(key || '').startsWith('abs:')) return;
+    this.touch(key, LV.seen, t);
+    const nd = this.nodes.get(key);
+    if (nd && !nd.ghost) Object.assign(nd, { ghost: true, ghostAt: t, ghostSrc: src, ghostLine: String(line || '').slice(0, 160) });
   }
   touch(key, level, t, created) {
     if (!key) return null;
@@ -205,7 +251,19 @@ class AgentWorld {
           if (step.act === 'edit') { nd.edits.push(t); if (nd.edits.length > MAX_EDITS) nd.edits.shift(); }
         }
       }
-    } else if (step.act === 'edit' && STALE_ERR.test(resultText(block, line))) step.staleErr = true;
+    } else if (step.act === 'edit' || step.act === 'read') {
+      const text = resultText(block, line);
+      if (step.act === 'edit' && STALE_ERR.test(text)) step.staleErr = true;
+      if (MISSING_TOOL.test(text)) this.ghost(step.target, t, 'tool', text.split('\n')[0]);
+    }
+    // l'output dei comandi può dire che un file non c'è, anche quando il comando nel complesso riesce
+    if (step.act === 'run' || step.act === 'verify' || step.act === 'look') {
+      const base = this.shellCwd;
+      for (const g of missingPathsInOutput(resultText(block, line))) {
+        const full = base && !/^([A-Za-z]:[\\/]|\/|~)/.test(g.path) ? base + '/' + g.path : g.path;
+        this.ghost(relKey(full, cwd), t, 'output', g.line);
+      }
+    }
     const i = this.steps.lastIndexOf(step);
     if (i >= 0) this.compute(i);
   }
@@ -317,4 +375,4 @@ function resolveAgainstTree(nodes, tree) {
   return [...merged.values()];
 }
 
-module.exports = { mainCommand, AgentWorld, scanTree, resolveAgainstTree, relKey, referencesIn, listedPaths, pathsInCommand, isProjectFile, DIMS, phaseOf };
+module.exports = { mainCommand, AgentWorld, scanTree, resolveAgainstTree, relKey, referencesIn, listedPaths, pathsInCommand, missingPathsInOutput, isProjectFile, EXT, DIMS, phaseOf };
