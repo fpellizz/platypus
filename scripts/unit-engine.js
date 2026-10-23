@@ -121,12 +121,26 @@ function gitBashPathTests(ok) {
   ok(relKey('/d/dev/shop/a.ts', '/home/u/shop') === 'abs:/d/dev/shop/a.ts', 'su Linux e macOS /d/... resta un percorso normale');
 }
 
+// mappa: dopo un cd fuori dal progetto Claude Code riporta la shell indietro, anche in una cartella con spazi
+function shellResetTests(ok) {
+  const { AgentWorld } = require(path.join(ROOT, 'src', 'core', 'worldmap'));
+  const cwd = 'C:\\Users\\Mario Rossi\\shop';
+  const w = new AgentWorld();
+  w.start('c', 'Bash', { command: 'cd .. && ls' }, 1000, cwd);
+  w.end('c', false, { content: 'shop\nShell cwd was reset to C:\\Users\\Mario Rossi\\shop' }, null, 1100, cwd);
+  w.start('d', 'Bash', { command: 'cat src/cart.ts' }, 1200, cwd);
+  w.end('d', false, { content: 'cat: src/cart.ts: No such file or directory' }, null, 1300, cwd);
+  const ghosts = [...w.nodes].filter(([, n]) => n.ghost).map(([k]) => k);
+  ok(w.shellCwd === 'C:/Users/Mario Rossi/shop' && ghosts.length === 1 && ghosts[0] === 'src/cart.ts', `cartella con spazi dopo «Shell cwd was reset»: ${w.shellCwd} · fantasma ${ghosts.join(', ')}`);
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
   quietSubTests(ok);
   resumedSubTests(ok);
   archiveTests(ok);
   gitBashPathTests(ok);
+  shellResetTests(ok);
 }
 
 module.exports = { run };

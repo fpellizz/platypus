@@ -241,8 +241,9 @@ class AgentWorld {
     if (!isErr) {
       const text = resultText(block, line);
       const r = line && line.toolUseResult;
-      const reset = /Shell cwd was reset to (\S+)/.exec(text);
-      if (reset) this.shellCwd = normSlashes(reset[1]);
+      // fino a fine riga: la cartella può avere spazi (es. C:\Users\Mario Rossi\shop)
+      const reset = /Shell cwd was reset to ([^\r\n]+)/.exec(text);
+      if (reset) this.shellCwd = normSlashes(reset[1].trim());
       // gli elenchi di Grep/Glob hanno percorsi assoluti o già comprensivi della cartella cercata
       if (step.act === 'search') for (const p of listedPaths(text, r)) this.touch(relKey(p, cwd), LV.seen, t);
       else if (step.act === 'read' && step.target && !step.target.startsWith('web:')) {
