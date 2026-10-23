@@ -183,6 +183,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     req.on('error', () => resolve(0)); req.end();
   });
   ok(bad === 403, 'richieste da altri host rifiutate → ' + bad);
+  const malformed = await get(port, '/%');
+  const stillUp = await get(port, '/api/settings');
+  ok(malformed.status === 400 && stillUp.status === 200, `URL malformato (GET /%) → ${malformed.status}, il server risponde ancora → ${stillUp.status}`);
   core.stop();
 
   console.log('hook di Claude Code');

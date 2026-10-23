@@ -468,7 +468,10 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
       try { return json(res, 200, listArchive({ base, liveIds: liveIds() })); } catch (e) { return json(res, 500, { error: e.message }); }
     }
     // file statici
-    let rel = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname === '/report' ? '/report.html' : url.pathname);
+    let rel;
+    // un percorso con un "%" sbagliato (es. "/%") non deve far cadere il server
+    try { rel = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname === '/report' ? '/report.html' : url.pathname); }
+    catch { res.writeHead(400); return res.end(); }
     const file = path.normalize(path.join(RENDERER, rel));
     if (!file.startsWith(RENDERER)) { res.writeHead(403); return res.end(); }
     fs.readFile(file, (err, data) => {
