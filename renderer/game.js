@@ -482,7 +482,7 @@ function bindBoardTabs() {
   if (r) r.onclick = () => window.open('/report', '_blank');
 }
 // mappa contro territorio del piano che stai guardando: chiesta al massimo ogni 10 s (il disco si guarda solo lì)
-const ground = { sid: null, t: 0, busy: false, stale: new Set(), claim: new Map() };
+const ground = { sid: null, t: 0, busy: false, stale: new Set(), claim: new Map(), bang: new Map(), puzzled: new Set(), seen: new Map() };
 async function loadGrounding() {
   const replay = viewSid === 'replay';
   const s = replay ? (replayFrame && replayFrame.session) : (viewSid && !isSpecial(viewSid) ? sessionById(viewSid) : null);
@@ -502,10 +502,21 @@ async function loadGrounding() {
       if (!prev || (c.status === 'contradicted' && prev.status !== 'contradicted')) claim.set(c.agent, c);
     }
     ground.claim = claim;
+    // sorprese: "!?" per un attimo quando ne arriva una forte; nuvoletta grigia se insiste due volte di fila
+    const last = new Map(), run = new Map();
+    for (const x of g.surprises || []) { last.set(x.agent, x); run.set(x.agent, x.reaction === 'insists' ? (run.get(x.agent) || 0) + 1 : 0); }
+    const puzzled = new Set();
+    for (const [id, x] of last) {
+      const recent = replay || g.now - x.t < 30000;
+      if (x.value >= 0.7 && recent && x.t > (ground.seen.get(id) || 0)) ground.bang.set(id, performance.now() + 4000);
+      ground.seen.set(id, x.t);
+      if ((run.get(id) || 0) >= 2 && (replay || g.now - x.t < 600000)) puzzled.add(id);
+    }
+    ground.puzzled = puzzled;
   } catch {} finally { ground.busy = false; }
 }
 setInterval(loadGrounding, 3000);
-const groundFor = c => (c.npc || c.sid !== ground.sid ? null : { stale: ground.stale.has(c.id), claim: ground.claim.get(c.id) || null });
+const groundFor = c => (c.npc || c.sid !== ground.sid ? null : { stale: ground.stale.has(c.id), claim: ground.claim.get(c.id) || null, bang: ground.bang.get(c.id) || 0, puzzled: ground.puzzled.has(c.id) });
 
 async function loadCosts() { if (Date.now() - costsT < 60000 && costsData) return; costsT = Date.now(); try { costsData = await (await fetch('/api/stats/costs?days=14')).json(); } catch {} }
 async function loadHonors() { if (Date.now() - honorsT < 60000 && honorsData) return; honorsT = Date.now(); try { honorsData = await (await fetch('/api/stats/honors')).json(); } catch {} }
@@ -2521,6 +2532,17 @@ function drawChar(c, t) {
   if (c.alert && a.status !== 'waiting' && ((t / 600) | 0) % 2) { R(ix, iy - 2, 5, 9, C.orange); R(ix + 1, iy - 1, 3, 1, C.black); R(ix + 3, iy, 1, 2, C.black); R(ix + 2, iy + 2, 1, 1, C.black); R(ix + 2, iy + 5, 1, 1, C.black); }
   if (a.status === 'done' || a.finished) { R(ix, iy, 1, 1, C.green); R(ix + 1, iy + 1, 1, 1, C.green); R(ix + 2, iy, 1, 1, C.green); R(ix + 3, iy - 1, 1, 1, C.green); R(ix + 4, iy - 2, 1, 1, C.green); }
   const gr = groundFor(c);
+  if (gr && gr.puzzled) { // nuvoletta grigia sopra la testa, con il punto di domanda: insiste sullo stesso errore
+    const cx = x - 4, cy = hy - 17 + (((t / 700) | 0) % 2);
+    R(cx + 1, cy, 7, 7, C.lgrey); R(cx, cy + 1, 9, 5, C.lgrey);
+    R(cx + 2, cy + 8, 2, 1, C.lgrey); R(cx + 4, cy + 10, 1, 1, C.lgrey);
+    pixText('?', cx + 3, cy + 1, C.dgrey);
+  }
+  if (gr && gr.bang > t) { // "!?": il mondo gli ha appena dato torto, e non se l'aspettava
+    const j = Math.round(Math.sin(t / 45));
+    R(ix - 2 + j, iy - 13, 11, 8, C.black);
+    pixText('!?', ix - 1 + j, iy - 12, C.yellow);
+  }
   if (gr && gr.stale) { // orologio: ha in testa un file che nel frattempo è cambiato (ricordo scaduto)
     const ox = x - 11, oy = hy - 7;
     R(ox + 1, oy + 1, 3, 3, C.black); R(ox + 1, oy, 3, 1, C.orange); R(ox, oy + 1, 1, 3, C.orange); R(ox + 4, oy + 1, 1, 3, C.orange); R(ox + 1, oy + 4, 3, 1, C.orange);
