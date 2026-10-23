@@ -160,8 +160,25 @@ function forgetTests(ok) {
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
+// finestra: la posizione salvata su un monitor che non c'è più non deve aprirla fuori dallo schermo
+function boundsTests(ok) {
+  const { fitBounds } = require(path.join(ROOT, 'src', 'bounds'));
+  const one = [{ x: 0, y: 0, width: 1920, height: 1160 }];
+  const two = [...one, { x: 1920, y: 0, width: 2560, height: 1400 }];
+  const saved = { x: 2400, y: 100, width: 980, height: 620 };
+  const gone = fitBounds(saved, one);
+  ok(gone.x === undefined && gone.y === undefined && gone.width === 980, 'monitor staccato: la finestra si riapre al centro dello schermo che c\'è');
+  ok(JSON.stringify(fitBounds(saved, two)) === JSON.stringify(saved), 'monitor ancora collegato: stessa posizione di prima');
+  ok(fitBounds({ x: 1900, y: 100, width: 980, height: 620 }, one).x === undefined, 'finestra quasi tutta fuori (meno di 120 px visibili): al centro');
+  ok(fitBounds({ x: 1700, y: 100, width: 980, height: 620 }, one).x === 1700, 'finestra in parte fuori ma con la barra in alto visibile: resta dov\'è');
+  ok(fitBounds({ x: 100, y: -500, width: 980, height: 620 }, one).y === undefined, 'barra in alto sopra lo schermo: al centro');
+  const big = fitBounds({ width: 3000, height: 2000 }, one);
+  ok(big.width === 1920 && big.height === 1160, 'dimensioni più grandi dello schermo principale: ridotte');
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
+  boundsTests(ok);
   forgetTests(ok);
   quietSubTests(ok);
   resumedSubTests(ok);

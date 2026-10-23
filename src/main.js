@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { startCore } = require('./core');
 const autostart = require('./autostart');
+const { fitBounds } = require('./bounds');
 const { tr, trn, money } = require('./i18n');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
@@ -40,7 +41,10 @@ function saveCfg() {
 
 // ---------------------------------------------------------------- finestra
 function createWindow() {
-  const b = cfg.bounds || {};
+  // la posizione salvata vale solo se cade su uno schermo collegato adesso (il primo è il principale)
+  const { screen } = require('electron');
+  const areas = [screen.getPrimaryDisplay(), ...screen.getAllDisplays()].map(d => d.workArea);
+  const b = fitBounds(cfg.bounds || {}, areas);
   win = new BrowserWindow({
     width: b.width || 980,
     height: b.height || 620,
