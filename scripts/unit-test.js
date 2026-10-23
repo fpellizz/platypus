@@ -349,6 +349,37 @@ function surpriseTests(ok) {
   const sum = sp.surprises([ins, cor, arg, edm], { now: 1e13 }).reactions;
   const kk = sum.find(x => x.id === 'k'), ii = sum.find(x => x.id === 'i');
   ok(kk && kk.corrects === 1 && kk.total === 1 && ii && ii.corrects === 0 && ii.total === 2, `indicatore per agente: si corregge ${kk && kk.corrects} volte su ${kk && kk.total}`);
+
+  // B3: ha capito la causa? catena sorpresa → file citati → modifica → conferma
+  const causeOf = (w, i, now = 1e13) => sp.causeAt(w.world.steps, i, { now });
+  const fol = agent('f', 'TEST-RUNNER');
+  sh(fol.world, 'npm test', 1000, true, "FAIL src/auth/refresh.test.ts\n  ● refresh › renews\n    TypeError: Cannot read properties of undefined (reading 'exp')\n      at renew (src/auth/refresh.ts:42:18)\n      at Object.<anonymous> (node_modules/jest-circus/build/utils.js:298:28)");
+  act(fol.world, 'Read', 'src/auth/refresh.ts', 2000);
+  act(fol.world, 'Edit', 'src/auth/refresh.ts', 3000);
+  sh(fol.world, 'npm test', 4000, false, 'Tests: 12 passed');
+  let cz = causeOf(fol, 0);
+  ok(cz.cause === 'follows' && cz.readCited && cz.refs[0].file === 'src/auth/refresh.ts' && cz.refs[0].line === 42 && cz.discarded === 1, 'segue la traccia: modifica il file citato (e il frame di node_modules è scartato ma contato)');
+  ok(cz.chain.fix && cz.chain.fix.cited && cz.chain.confirm && cz.chain.complete, 'catena completa: errore → refresh.ts → modifica → npm test di nuovo verde');
+  const els = agent('el', 'PLAN');
+  sh(els.world, 'npx tsc --noEmit', 1000, true, "src/db/migrate.ts(12,5): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.");
+  act(els.world, 'Edit', 'src/ui/components/Menu.tsx', 2000);
+  cz = causeOf(els, 0);
+  ok(cz.cause === 'elsewhere' && cz.chain.fix && !cz.chain.fix.cited && !cz.chain.complete, 'cerca altrove: l\'errore cita migrate.ts, modifica Menu.tsx');
+  const thk = agent('th', 'CLAUDE');
+  sh(thk.world, 'npx tsc --noEmit', 1000, true, 'src/a.ts(3,1): error TS1005: \';\' expected.');
+  for (let k = 0; k < 6; k++) act(thk.world, 'Read', 'src/other' + k + '.ts', 2000 + k * 1000);
+  ok(causeOf(thk, 0).cause === 'thinking', 'nessuna modifica nei 6 passi dopo: ci pensa ancora');
+  ok(sp.causeAt(thk.world.steps, 0, { now: 1500 }).cause === 'thinking', 'con sei passi già fatti non è più "in corso"');
+  const ntr = agent('nt', 'CLAUDE');
+  sh(ntr.world, 'pnpm build', 1000, true, 'bash: pnpm: command not found');
+  sh(ntr.world, 'node x.js', 2000, true, 'Error: boom\n    at f (node_modules/lib/index.js:1:1)\n    at node:internal/main:5:3');
+  ok(causeOf(ntr, 0).cause === 'notrail' && causeOf(ntr, 1).cause === 'notrail' && causeOf(ntr, 1).discarded >= 1, 'l\'errore non cita file del progetto: nessuna traccia (ma sa di aver scartato le librerie)');
+  const und = agent('un', 'CLAUDE');
+  sh(und.world, 'npx tsc --noEmit', 1000, true, 'src/a.ts(3,1): error TS1005: \';\' expected.');
+  ok(sp.causeAt(und.world.steps, 0, { now: 20000 }).cause === 'undecided', 'appena successo, senza passi dopo: in corso');
+  const ind = sp.surprises([fol, els], { now: 1e13 }).reactions;
+  const fi = ind.find(x => x.id === 'f'), ei = ind.find(x => x.id === 'el');
+  ok(fi && fi.follows === 1 && fi.judged === 1 && fi.complete === 1 && fi.chains === 1 && ei && ei.follows === 0 && ei.judged === 1 && ei.complete === 0, 'indicatori: segue la traccia X/Y, catene complete X/Y');
 }
 
 function run(ok) {

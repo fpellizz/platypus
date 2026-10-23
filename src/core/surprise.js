@@ -240,25 +240,58 @@ function reactionAt(steps, i, { replies = [], goals = [], now = Date.now() } = {
   return { reaction, recovery };
 }
 
+// ---- ha capito la causa? Le prime modifiche dopo la sorpresa (entro 6 passi) contro i file citati dall'errore
+const CAUSE_WINDOW = 6;
+// un file citato e un luogo della mappa sono lo stesso file? (l'errore può citarlo da un'altra cartella)
+function sameFile(a, b) {
+  if (!a || !b) return false;
+  const x = String(a).toLowerCase(), y = String(b).toLowerCase();
+  return x === y || x.endsWith('/' + y) || y.endsWith('/' + x);
+}
+function causeAt(steps, i, { now = Date.now() } = {}) {
+  const s = steps[i];
+  const refs = (s.refs && s.refs.refs) || [], discarded = (s.refs && s.refs.discarded) || 0;
+  const next = steps.slice(i + 1, i + 1 + CAUSE_WINDOW);
+  const edits = next.filter(x => x.act === 'edit' && x.err === false);
+  const cited = x => refs.some(r => sameFile(r.file, x.target));
+  let cause;
+  if (!refs.length) cause = 'notrail';
+  else if (edits.some(cited)) cause = 'follows';
+  else if (edits.length) cause = 'elsewhere';
+  else cause = next.length < CAUSE_WINDOW && now - s.t < UNDECIDED_MS ? 'undecided' : 'thinking';
+  // la catena: sorpresa → file citati → modifica → conferma (la stessa verifica che torna a riuscire)
+  const fix = edits.find(cited) || edits[0] || null;
+  const same = x => x.sig === s.sig || (RUNS.has(s.act) && s.target && x.target === s.target);
+  let confirm = null;
+  for (let j = i + 1; j < steps.length; j++) if (same(steps[j]) && steps[j].err === false) { confirm = steps[j]; break; }
+  return {
+    cause, refs: refs.slice(0, 5), discarded,
+    readCited: next.some(x => x.act === 'read' && x.err === false && cited(x)),
+    chain: { fix: fix ? { t: fix.t, target: fix.target, cited: cited(fix) } : null, confirm: confirm ? { t: confirm.t } : null, complete: !!(fix && confirm && confirm.t > fix.t) },
+  };
+}
+
 // agents: [{id, name, world, mind}]; only: Set degli id da esaminare (null = tutti)
 function surprises(agents, { only = null, now = Date.now() } = {}) {
   const out = [], byAgent = [];
   for (const a of agents) {
     if (!a.world || (only && !only.has(a.id))) continue;
     const st = a.world.steps, ctx = { replies: a.world.replies || [], goals: (a.mind && a.mind.goals) || [], now };
-    let corrects = 0, total = 0;
+    let corrects = 0, total = 0, follows = 0, judged = 0, complete = 0, chains = 0;
     for (let i = 0; i < st.length; i++) {
       if (!st[i].err) continue;
       const x = surpriseAt(st, i);
       if (!x) continue;
-      const r = reactionAt(st, i, ctx);
+      const r = reactionAt(st, i, ctx), c = causeAt(st, i, ctx);
       if (r.reaction !== 'undecided') { total++; if (r.reaction === 'corrects') corrects++; }
-      out.push({ agent: a.id, agentName: a.name, ...x, ...r });
+      if (c.cause !== 'notrail' && c.cause !== 'undecided') { judged++; if (c.cause === 'follows') follows++; }
+      if (c.refs.length) { chains++; if (c.chain.complete) complete++; }
+      out.push({ agent: a.id, agentName: a.name, ...x, ...r, ...c });
     }
-    if (total) byAgent.push({ id: a.id, name: a.name, corrects, total });
+    if (total || chains) byAgent.push({ id: a.id, name: a.name, corrects, total, follows, judged, complete, chains });
   }
   out.sort((x, y) => x.t - y.t);
   return { surprises: out.slice(-300), reactions: byAgent };
 }
 
-module.exports = { classifyFailure, errorExcerpt, extractErrorRefs, surpriseAt, reactionAt, surprises, BASE };
+module.exports = { classifyFailure, errorExcerpt, extractErrorRefs, surpriseAt, reactionAt, causeAt, surprises, BASE };
