@@ -13,6 +13,8 @@
 //   POST /api/open-folder    {sid|key}
 //   GET  /api/bottega        {sid|cwd|key}  il Libro della bottega del progetto (lezioni dedotte dai fatti)
 //   GET  /api/bottega/list   i progetti che hanno un libro
+//   GET  /api/bottega/claudemd  {sid|cwd|key}  anteprima della sezione per il CLAUDE.md e se si può scrivere
+//   POST /api/bottega/claudemd  {sid|cwd|key, confirm: true}  la scrive tra i marcatori (con copia di sicurezza)
 //   POST /api/bottega        {sid|cwd, action: pin|ignore|unignore|forget, id}
 //   POST /api/bottega/learn  {sid|cwd}  impara dalle sessioni passate del progetto (in background)
 //   GET  /api/bottega/hints  {sid}  cosa direbbe il Nonno adesso: azioni in corso che corrispondono a una lezione
@@ -28,7 +30,8 @@ const worldmap = require('./worldmap');
 const semantic = require('./semantic');
 const grounding = require('./grounding');
 const surprise = require('./surprise');
-const { Bottega, digest, hints } = require('./bottega');
+const { Bottega, digest, hints, renderSection } = require('./bottega');
+const claudemd = require('./claudemd');
 const { TranscriptWatcher, SessionRegistry, claudeDir, findCoworkBases } = require('./sources');
 const { Weather } = require('./weather');
 const { describeTool } = require('./describe');
@@ -267,6 +270,21 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     return typeof q.cwd === 'string' ? q.cwd.slice(0, 500) : '';
   }
 
+  // la sezione per il CLAUDE.md del progetto: testo, percorso e se si può scrivere (mai Cowork, mai la demo)
+  function claudeMdPlan(q) {
+    const cwd = projectCwd(q);
+    if (!cwd) return null;
+    const v = bottega.view(cwd);
+    const norm = x => String(x || '').replace(/\\/g, '/').toLowerCase();
+    const same = [...state.sessions.values()].filter(s => norm(s.cwd) === norm(cwd));
+    const markdown = renderSection(v.lessons, v.name);
+    let why = '';
+    if (same.some(s => s.demo)) why = 'demo';
+    else if (same.some(s => s.kind === 'cowork')) why = 'cowork';
+    else { const cw = claudemd.canWrite(cwd); if (!cw.ok) why = cw.reason; }
+    return { cwd, markdown, path: require('path').join(cwd, 'CLAUDE.md'), writable: !why && !!markdown, reason: why || (markdown ? '' : 'empty') };
+  }
+
   function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); }
   function liveIds() { return new Set([...state.sessions.values()].filter(s => !s.ended).map(s => s.id)); }
 
@@ -309,6 +327,13 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
       case '/api/cowork':
         state.setIncludeCowork(typeof j.on === 'boolean' ? j.on : !state.includeCowork);
         return json(res, 200, { includeCowork: state.includeCowork });
+      case '/api/bottega/claudemd': {
+        const p = claudeMdPlan(j);
+        if (!p) return json(res, 404, { ok: false });
+        if (j.confirm !== true) return json(res, 400, { ok: false, reason: 'confirm' }); // mai in automatico
+        if (!p.writable) return json(res, 409, { ok: false, reason: p.reason });
+        return json(res, 200, { path: p.path, ...claudemd.upsertSection(p.path, p.markdown) });
+      }
       case '/api/bottega/learn': {
         const cwd = projectCwd(j);
         if (!cwd) return json(res, 404, { ok: false });
@@ -423,6 +448,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     if (url.pathname === '/api/agentmind') return json(res, 200, agentMind(url.searchParams));
     if (url.pathname === '/api/grounding') return json(res, 200, agentGrounding(url.searchParams));
     if (url.pathname === '/api/bottega/list') return json(res, 200, { ok: true, books: bottega.list() });
+    if (url.pathname === '/api/bottega/claudemd') { const p = claudeMdPlan(Object.fromEntries(url.searchParams)); return p ? json(res, 200, { ok: true, ...p }) : json(res, 404, { ok: false }); }
     if (url.pathname === '/api/bottega/hints') {
       const s = state.sessions.get(url.searchParams.get('sid') || '');
       if (!s || !s.cwd) return json(res, 404, { ok: false });

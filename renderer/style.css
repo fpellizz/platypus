@@ -622,3 +622,8 @@ body.tiny .balloon .ung { display: none; }
 #bottega .tog { display: block; width: 100%; text-align: left; margin: 6px 0; background: transparent; color: var(--dim); }
 #board tr.click { cursor: pointer; }
 #board tr.click:hover td { background: #2a2440; }
+#bottega .md { border: 2px dashed var(--yellow); padding: 6px 8px; margin-bottom: 6px; }
+#bottega .md .mh { font-family: 'PS2P'; font-size: 7px; color: var(--yellow); margin-bottom: 4px; overflow-wrap: anywhere; }
+#bottega .md .mh .dim { font-family: 'VT'; font-size: 14px; }
+#bottega .md pre { white-space: pre-wrap; font-family: 'VT'; font-size: 15px; background: #000; color: var(--ink); padding: 6px; margin: 0 0 6px; max-height: 30vh; overflow: auto; }
+#bottega button[disabled] { opacity: .45; cursor: not-allowed; }

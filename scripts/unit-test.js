@@ -483,6 +483,17 @@ function elderTests(ok) {
   const st = new OfficeState({});
   st.setSettings({ bottegaLearn: false, elderEnabled: false });
   ok(st.settings.bottegaLearn === false && st.settings.elderEnabled === false, 'opzioni: si spengono');
+  // C4: la sezione per il CLAUDE.md
+  const md = bt.renderSection([
+    { ...lessons[0], weight: 2 }, { ...lessons[1], weight: 5 }, { ...lessons[2], weight: 1, pinned: true },
+    lessons[3], lessons[4],
+  ], 'portale-clienti');
+  const rows = md.split('\n').filter(l => l.startsWith('- '));
+  ok(/^## .*portale-clienti/.test(md) && rows.length === 3, `CLAUDE.md: titolo e tre lezioni (niente osservazioni né ignorate)\n${md}`);
+  ok(/refresh\.ts/.test(rows[0]) && /oldToken\.ts/.test(rows[1]) && /test:e2e/.test(rows[2]), 'CLAUDE.md: prima le fissate, poi per peso');
+  ok(bt.renderSection([lessons[3]], 'x') === '', 'CLAUDE.md: senza lezioni forti non c\'è niente da proporre');
+  const many = Array.from({ length: 12 }, (_, i) => ({ ...lessons[1], id: 'g' + i, key: 'src/x' + i + '.ts' }));
+  ok(bt.renderSection(many, 'x').split('\n').filter(l => l.startsWith('- ')).length === 8, 'CLAUDE.md: al massimo 8 lezioni');
 }
 
 function run(ok) {

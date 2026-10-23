@@ -10,11 +10,18 @@
   const when = t => new Date(t).toLocaleString(LOCALE, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const LEVEL = { lesson: [tr('LEZIONE'), 'ok'], observation: [tr('OSSERVAZIONE'), ''] };
 
-  const B = { open: false, q: null, focus: null, data: null, showObs: false, showIgnored: false, timer: null, sig: '' };
+  const B = { open: false, q: null, focus: null, data: null, showObs: false, showIgnored: false, timer: null, sig: '', md: null };
+  // perché la sezione non si può scrivere nel CLAUDE.md (allora resta solo "Copia")
+  const WHY_NOT = {
+    demo: tr('È la demo: il progetto non esiste davvero.'), cowork: tr('Sessione Cowork: i suoi file non sono su questo computer.'),
+    missing: tr('La cartella del progetto non si trova su questo computer.'), notdir: tr('La cartella del progetto non si trova su questo computer.'),
+    readonly: tr('Il file o la cartella sono in sola lettura.'), symlink: tr('CLAUDE.md è un collegamento a un altro file: non lo tocco.'),
+    notfile: tr('CLAUDE.md non è un file normale.'), empty: tr('Non ci sono ancora lezioni da passare.'),
+  };
   function el() { return $('#bottega'); }
 
   window.openBottega = function (sid, lessonId, opts = {}) {
-    B.open = true; B.focus = lessonId || null; B.sig = ''; B.scrolled = false;
+    B.open = true; B.focus = lessonId || null; B.sig = ''; B.scrolled = false; B.md = null;
     B.q = sid ? { sid } : opts.key ? { key: opts.key } : null;
     if (!B.q) return;
     el().hidden = false;
@@ -40,7 +47,7 @@
 
   function render() {
     const d = B.data;
-    const sig = JSON.stringify([d.lessons.map(l => [l.id, l.count, l.pinned, l.ignored, l.level]), d.learning, B.showObs, B.showIgnored, B.focus]);
+    const sig = JSON.stringify([d.lessons.map(l => [l.id, l.count, l.pinned, l.ignored, l.level]), d.learning, B.showObs, B.showIgnored, B.focus, B.md]);
     if (sig === B.sig) return;
     B.sig = sig;
     const live = window.sessions ? new Set(sessions().filter(s => !s.demo).map(s => s.id)) : new Set();
@@ -68,7 +75,14 @@
     el().innerHTML = `<span class="x" title="${esc(tr('Chiudi'))}">X</span>` +
       `<h3>${esc(tr('LIBRO DELLA BOTTEGA'))} · ${esc(d.name)}</h3>` +
       `<p class="honest">${esc(tr('Lezioni dedotte dai fatti (esiti, ripetizioni, correzioni) delle sessioni di questo progetto: indizi, non regole certe.'))}</p>` +
-      `<div class="bar">${isDemo ? `<span class="dim">${esc(tr('Libro della demo: lezioni finte.'))}</span>` : learn}<span class="dim">${esc(trn('{n} sessione letta dall\'archivio', '{n} sessioni lette dall\'archivio', d.learnedSessions || 0))}</span></div>` +
+      `<div class="bar">${isDemo ? `<span class="dim">${esc(tr('Libro della demo: lezioni finte.'))}</span>` : learn}<span class="dim">${esc(trn('{n} sessione letta dall\'archivio', '{n} sessioni lette dall\'archivio', d.learnedSessions || 0))}</span>` +
+      `<button data-do="md" title="${esc(tr('Prepara una sezione per il CLAUDE.md del progetto con le lezioni fissate e le più forti'))}">${esc(tr('PROPONI PER CLAUDE.MD'))}</button></div>` +
+      (B.md ? `<div class="md"><div class="mh">${esc(tr('ANTEPRIMA'))} <span class="dim">${esc(B.md.path)}</span></div>` +
+        (B.md.markdown ? `<pre>${esc(B.md.markdown)}</pre>` : `<p class="dim">${esc(WHY_NOT.empty)}</p>`) +
+        `<div class="la"><button data-do="copy" ${B.md.markdown ? '' : 'disabled'}>${esc(tr('COPIA'))}</button>` +
+        `<button data-do="write" ${B.md.writable ? '' : 'disabled'} title="${esc(B.md.writable ? tr('Scrive la sezione tra i marcatori di Platypus, dopo aver salvato una copia del file') : (WHY_NOT[B.md.reason] || B.md.reason))}">${esc(tr('AGGIUNGI A CLAUDE.MD'))}</button>` +
+        `<button data-do="mdclose">${esc(tr('CHIUDI'))}</button></div>` +
+        (!B.md.writable && B.md.markdown ? `<p class="dim">${esc(tr('Solo «Copia»: {why}', { why: WHY_NOT[B.md.reason] || B.md.reason }))}</p>` : '') + '</div>' : '') +
       `<div class="list">` +
       (lessons.length ? lessons.map(card).join('') : `<p class="dim">${esc(tr('Ancora nessuna lezione: servono più casi, in più sessioni.'))}</p>`) +
       (obs.length ? `<button class="tog" data-tog="obs">${esc((B.showObs ? '▾ ' : '▸ ') + trn('{n} osservazione (un caso solo o peso basso)', '{n} osservazioni (un caso solo o peso basso)', obs.length))}</button>` + (B.showObs ? obs.map(card).join('') : '') : '') +
@@ -87,6 +101,29 @@
       const r = await post('/api/replay', { action: 'start', key: b.dataset.replay, at: Number(b.dataset.at) });
       if (r && r.ok) { closeBottega(); if (window.goTo) goTo('replay'); }
       else if (window.toast) toast((r && r.error) || tr('Sessione non trovata'), false);
+    };
+    // CLAUDE.md: anteprima, copia, e scrittura solo dopo una conferma che mostra il percorso
+    const mdBtn = e.querySelector('[data-do=md]');
+    if (mdBtn) mdBtn.onclick = async () => {
+      try { const r = await (await fetch('/api/bottega/claudemd?' + new URLSearchParams(B.q))).json(); if (r && r.ok) { B.md = r; render(); } } catch {}
+    };
+    const mc = e.querySelector('[data-do=mdclose]');
+    if (mc) mc.onclick = () => { B.md = null; render(); };
+    const cp = e.querySelector('[data-do=copy]');
+    if (cp) cp.onclick = async () => {
+      let ok = false;
+      try { await navigator.clipboard.writeText(B.md.markdown); ok = true; } catch {
+        const ta = document.createElement('textarea'); ta.value = B.md.markdown; document.body.appendChild(ta); ta.select();
+        try { ok = document.execCommand('copy'); } catch {} ta.remove();
+      }
+      if (window.toast) toast(ok ? tr('Sezione copiata negli appunti') : tr('Non riesco a copiare: selezionala a mano'), ok);
+    };
+    const wr = e.querySelector('[data-do=write]');
+    if (wr) wr.onclick = async () => {
+      if (!confirm(tr('Scrivere la sezione nel file {path}? Il resto del file resta com\'è e prima ne salvo una copia ({backup}).', { path: B.md.path, backup: 'CLAUDE.md.platypus-backup' }))) return;
+      const r = await post('/api/bottega/claudemd', { confirm: true });
+      if (window.toast) toast(r.ok ? (r.mode === 'replace' ? tr('Sezione aggiornata in {path}', { path: r.path }) : tr('Sezione aggiunta in {path}', { path: r.path })) : tr('Non ho scritto nulla: {why}', { why: WHY_NOT[r.reason || r.error] || r.reason || r.error || '?' }), !!r.ok);
+      if (r.ok) { B.md = null; render(); }
     };
     const lb = e.querySelector('[data-do=learn]');
     if (lb) lb.onclick = async () => {

@@ -281,6 +281,34 @@ function elderLine(l) {
   }
 }
 
+// ---- la sezione per il CLAUDE.md del progetto: le lezioni fissate e le più forti, brevi e operative
+const MAX_CLAUDEMD = 8;
+function renderSection(lessons, name) {
+  const pick = lessons.filter(l => !l.ignored && (l.pinned || l.level === 'lesson'))
+    .sort((x, y) => (y.pinned - x.pinned) || (y.weight - x.weight)).slice(0, MAX_CLAUDEMD);
+  if (!pick.length) return '';
+  const line = l => {
+    const [pat, file] = l.key.split(' → ');
+    switch (l.kind) {
+      case 'flaky-command': return tr('Il comando `{cmd}` è instabile: rilancialo una volta prima di indagare.', { cmd: l.key });
+      case 'slow-step': return tr('`{cmd}` è lento: lancialo in background o con un limite di tempo.', { cmd: l.key });
+      case 'loop-trap': return tr('Con `{cmd}` si gira in tondo: se fallisce, cambia qualcosa prima di rilanciarlo.', { cmd: l.key });
+      case 'fragile-file': return tr('`{file}` è fragile: dopo averlo modificato lancia i test.', { file: l.key });
+      case 'stale-trap': return tr('`{file}` lo modificano più agenti insieme: rileggilo prima di cambiarlo.', { file: l.key });
+      case 'ghost-path': return tr('`{file}` non esiste (forse è stato spostato o rinominato): non cercarlo.', { file: l.key });
+      case 'known-fix': return tr('L\'errore «{pat}» di solito si sistema in `{file}`.', { pat, file });
+      default: return l.title || l.key;
+    }
+  };
+  return [
+    '## ' + tr('Lezioni della bottega ({name})', { name }),
+    '',
+    tr('Dedotte da Platypus dalle sessioni di questo progetto: indizi, non regole certe.'),
+    '',
+    ...pick.map(l => '- ' + line(l)),
+  ].join('\n');
+}
+
 // peso: cresce con i casi e con le sessioni diverse, si dimezza ogni 30 giorni dall'ultimo caso
 function weightOf(l, now = Date.now()) {
   const base = (1 + Math.log2(Math.max(1, l.count))) * (1 + 0.5 * (Math.max(1, l.sessions.length) - 1));
@@ -302,4 +330,4 @@ function describe(l) {
   }
 }
 
-module.exports = { Bottega, digest, hints, elderLine, projectKey, normDir, errorPattern, weightOf, KINDS, HALF_LIFE };
+module.exports = { Bottega, digest, hints, elderLine, renderSection, projectKey, normDir, errorPattern, weightOf, KINDS, HALF_LIFE };
