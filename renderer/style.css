@@ -580,3 +580,19 @@ body.tiny .balloon .ung { display: none; }
 #worldmap .wm-views button { min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #worldmap .wm-head > .wm-phase, #worldmap .wm-head > .wm-stats { flex-shrink: 1000; }
 #worldmap.view-ground .wm-head > .wm-phase { display: none; }
+/* mappa della realtà: vista "sorpresa e cause" */
+#worldmap .wm-surp { display: none; }
+#worldmap.view-surp .wm-body:not(.wm-surp) { display: none; }
+#worldmap.view-surp .wm-surp { display: grid; }
+#worldmap.view-surp .wm-head > .wm-phase { display: none; }
+#worldmap .wm-seis { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; border: 2px solid #1d1a2b; }
+#worldmap .wm-seis canvas { cursor: crosshair; }
+#worldmap .wm-gbody .sstats { font-family: 'VT'; font-size: 17px; color: var(--yellow); }
+#worldmap .wm-gbody .chain { display: flex; align-items: center; gap: 3px; margin-top: 3px; flex-wrap: wrap; }
+#worldmap .wm-gbody .chain i { color: var(--dim); font-style: normal; }
+#worldmap .wm-gbody .cbx { border: 1px solid #5f574f; padding: 0 4px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#worldmap .wm-gbody .cbx.err { border-color: #ff004d; color: #ff77a8; }
+#worldmap .wm-gbody .cbx.ref { border-color: #29adff; color: #9fd8ff; }
+#worldmap .wm-gbody .cbx.ok { border-color: #00e436; color: #00e436; }
+#worldmap .wm-gbody .cbx.bad { border-color: #ffa300; color: #ffa300; }
+#worldmap .wm-gbody .cbx.off { border-style: dashed; color: var(--dim); }

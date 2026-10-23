@@ -38,7 +38,8 @@
   const W = { open: false, sid: null, aid: 'main', replay: false, data: null, T: null, playing: false, yaw: -0.6, pitch: 0.42, drag: null,
     axes: ['work', 'novelty', 'friction'], hover: null, tiles: [], timer: null, fetching: false, layoutSig: '', layout: null, lastFrame: 0,
     view: 'map', mind: null, mhover: null, ground: null, groundSeq: 0 };
-  const VIEWS = ['map', 'mind', 'ground'];
+  const VIEWS = ['map', 'mind', 'ground', 'surp'];
+  const usesGround = () => W.view === 'ground' || W.view === 'surp'; // le due viste leggono /api/grounding
 
   function el() { return $('#worldmap'); }
 
@@ -65,7 +66,7 @@
       <div class="wm-head">
         <h3>${esc(tr('MAPPA DELLA REALTÀ'))}</h3>
         <select class="wm-agent">${opts.map(([k, l]) => `<option value="${esc(k)}" ${k === W.aid ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
-        <span class="wm-views">${[['map', tr('TERRITORIO E TRAIETTORIA')], ['mind', tr('BOLLA E STELLA POLARE')], ['ground', tr('MAPPA E TERRITORIO')]].map(([v, l]) => `<button data-v="${v}" title="${esc(l)}">${esc(l)}</button>`).join('')}</span>
+        <span class="wm-views">${[['map', tr('TERRITORIO E TRAIETTORIA')], ['mind', tr('BOLLA E STELLA POLARE')], ['ground', tr('MAPPA E TERRITORIO')], ['surp', tr('SORPRESA E CAUSE')]].map(([v, l]) => `<button data-v="${v}" title="${esc(l)}">${esc(l)}</button>`).join('')}</span>
         <span class="wm-phase"></span>
         <span class="wm-stats"></span>
         <button class="wm-help-btn" title="${esc(tr('Come si legge'))}">?</button>
@@ -89,6 +90,10 @@
       <div class="wm-body wm-ground">
         <div class="wm-gterr"><div class="wm-cap">${esc(tr('TERRITORIO'))} <span class="dim">${esc(tr('con i fantasmi e i ricordi scaduti'))}</span></div><canvas></canvas><div class="wm-tip" hidden></div></div>
         <div class="wm-gside"><div class="wm-cap">${esc(tr('MAPPA CONTRO TERRITORIO'))} <span class="dim">${esc(tr('quello che dice e sa, contro quello che c\'è'))}</span></div><div class="wm-gbody"></div></div>
+      </div>
+      <div class="wm-body wm-surp">
+        <div class="wm-seis"><div class="wm-cap">${esc(tr('SISMOGRAFO'))} <span class="dim">${esc(tr('le smentite del mondo, alte quanto la sorpresa'))}</span></div><canvas></canvas><div class="wm-tip" hidden></div></div>
+        <div class="wm-gside"><div class="wm-cap">${esc(tr('CAUSE'))} <span class="dim">${esc(tr('errore → file citato → modifica → conferma'))}</span></div><div class="wm-gbody wm-sbody"></div></div>
       </div>
       <div class="wm-time"><button class="wm-play">▶</button><canvas class="wm-band"></canvas><input type="range" min="0" max="1000" value="1000"><button class="wm-live">${esc(tr('IN DIRETTA'))}</button><span class="wm-clock"></span></div>
       <div class="wm-legend" hidden>
@@ -129,11 +134,15 @@
       terr.onmouseleave = () => { W.hover = null; };
     }
     // un elemento dell'elenco porta al suo momento sulla linea del tempo
-    e.querySelector('.wm-gbody').onclick = ev => {
+    for (const gb of e.querySelectorAll('.wm-gbody')) gb.onclick = ev => {
       const it = ev.target.closest('[data-t]');
       if (!it) return;
       W.playing = false; W.T = Number(it.dataset.t);
     };
+    const seis = e.querySelector('.wm-seis canvas');
+    seis.onmousemove = ev => { const r = seis.getBoundingClientRect(); W.shover = { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
+    seis.onmouseleave = () => { W.shover = null; };
+    seis.onclick = () => { const sp = W.spikeHover; if (sp) { W.playing = false; W.T = sp.t; } };
   }
 
   function setView(v) {
@@ -141,9 +150,10 @@
     const e = el();
     e.classList.toggle('view-mind', W.view === 'mind');
     e.classList.toggle('view-ground', W.view === 'ground');
+    e.classList.toggle('view-surp', W.view === 'surp');
     for (const b of e.querySelectorAll('.wm-views button')) b.classList.toggle('on', b.dataset.v === W.view);
     W.layoutSig = '';
-    if ((W.view === 'mind' && !W.mind) || (W.view === 'ground' && !W.ground)) refresh();
+    if ((W.view === 'mind' && !W.mind) || (usesGround() && !W.ground)) refresh();
   }
   async function refresh() {
     if (W.fetching) return;
@@ -158,7 +168,7 @@
         const m = await (await fetch('/api/agentmind?' + q)).json();
         if (m && m.ok) W.mind = m;
       }
-      if (W.view === 'ground') {
+      if (usesGround()) {
         const g = await (await fetch('/api/grounding?' + q)).json();
         if (g && g.ok) { W.ground = g; W.groundSeq++; }
       }
@@ -418,6 +428,98 @@
     box.innerHTML = html;
   }
 
+  // ---------------------------------------------------------------- sorpresa e cause: sismografo e catene
+  const REACT = { corrects: [tr('SI CORREGGE'), '#00e436', 'ok'], insists: [tr('INSISTE'), '#ff004d', 'bad'], stops: [tr('SI FERMA'), '#83769c', ''], undecided: [tr('IN CORSO'), '#fff1e8', ''] };
+  const CAUSE = { follows: [tr('SEGUE LA TRACCIA'), 'ok'], elsewhere: [tr('CERCA ALTROVE'), 'bad'], thinking: [tr('CI PENSA ANCORA'), 'mid'], notrail: [tr('NESSUNA TRACCIA'), ''], undecided: [tr('IN CORSO'), ''] };
+  const FAIL_KIND = { test: tr('test fallito'), command: tr('comando fallito'), missing: tr('file inesistente'), permission: tr('permesso negato'), timeout: tr('tempo scaduto'), edit: tr('modifica senza la stringa da sostituire'), syntax: tr('errore di sintassi o di compilazione') };
+  const WHY = { usedToWork: tr('prima funzionava'), firstTry: tr('primo tentativo'), tdd: tr('test appena scritto: è normale che fallisca') };
+  const what = s => s.excerpt || String(s.target || '').replace(/^(cmd|abs|tool|web|agent):/, '');
+  const whyText = s => s.reasons.filter(r => WHY[r]).map(r => WHY[r]).join(' · ');
+  function drawSeismo(t) {
+    const cv = el().querySelector('.wm-seis canvas');
+    const { ctx, w, h } = fitCanvas(cv);
+    ctx.fillStyle = '#07060c'; ctx.fillRect(0, 0, w, h);
+    const g = W.ground;
+    ctx.font = '15px VT, monospace';
+    if (!g) { ctx.fillStyle = '#83769C'; ctx.fillText(tr('Carico la mappa…'), 12, 24); return; }
+    const T = nowT();
+    const list = g.surprises.filter(s => s.t <= T);
+    const [a, b] = span();
+    const many = W.aid === 'all';
+    const rows = many ? [...new Map(g.surprises.map(s => [s.agent, s.agentName])).entries()].slice(0, 10) : [[W.aid, '']];
+    const pad = many ? 92 : 10;
+    const x = tt => pad + ((tt - a) / (b - a)) * (w - pad - 10);
+    W.spikes = [];
+    if (!g.surprises.length) { ctx.fillStyle = '#83769C'; ctx.fillText(tr('Nessuna sorpresa: finora il mondo non gli ha dato torto.'), 12, 28); W.spikeHover = null; return; }
+    const rowH = (h - 10) / rows.length;
+    rows.forEach(([id, name], ri) => {
+      const base = 6 + (ri + 1) * rowH - 4;
+      ctx.strokeStyle = '#2a2440'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, base + 0.5); ctx.lineTo(w - 6, base + 0.5); ctx.stroke();
+      // soglia della sorpresa forte (0,7)
+      ctx.setLineDash([2, 4]); ctx.strokeStyle = '#3a2f4f'; ctx.beginPath(); ctx.moveTo(pad, base - 0.7 * (rowH - 12) + 0.5); ctx.lineTo(w - 6, base - 0.7 * (rowH - 12) + 0.5); ctx.stroke(); ctx.setLineDash([]);
+      if (many) { ctx.fillStyle = '#c2c3c7'; ctx.fillText(clipText(ctx, name, pad - 8), 4, base - 2); }
+      for (const s of list) {
+        if (many && s.agent !== id) continue;
+        const sx = x(s.t), hh = Math.max(3, s.value * (rowH - 12));
+        const col = (REACT[s.reaction] || REACT.stops)[1];
+        // la più recente, se forte, trema un po'
+        const live = W.T == null && Date.now() - s.t < 20000 && s.value >= 0.7;
+        const jx = live ? Math.sin(t / 40) * 1.5 : 0;
+        ctx.fillStyle = col; ctx.fillRect(sx - 1 + jx, base - hh, 3, hh);
+        ctx.fillRect(sx - 3 + jx, base - hh - 2, 7, 3);
+        W.spikes.push({ x: sx, y0: base - hh - 3, y1: base, s });
+      }
+    });
+    ctx.fillStyle = '#fff1e8';
+    if (W.T != null) ctx.fillRect(x(W.T) - 1, 0, 2, h);
+    // tooltip della punta più vicina
+    const tip = el().querySelector('.wm-seis .wm-tip');
+    let best = null;
+    if (W.shover) for (const sp of W.spikes) { const d = Math.abs(sp.x - W.shover.x); if (d < 6 && W.shover.y >= sp.y0 - 6 && W.shover.y <= sp.y1 + 2 && (!best || d < best.d)) best = { d, sp }; }
+    W.spikeHover = best ? best.sp.s : null;
+    if (best) {
+      const s = best.sp.s, [rl] = REACT[s.reaction] || REACT.stops;
+      const html = `<b>${esc(FAIL_KIND[s.kind] || s.kind)}</b> · ${esc(tr('sorpresa {p}%', { p: Math.round(s.value * 100) }))}${many ? ' · ' + esc(s.agentName) : ''}<br>${esc(what(s))}<br><span class="dim">${esc(hhmm(s.t))} · ${esc(rl)}${whyText(s) ? ' · ' + esc(whyText(s)) : ''}</span>`;
+      if (tip._h !== html) { tip.innerHTML = html; tip._h = html; }
+      tip.hidden = false;
+      tip.style.left = Math.min(w - 260, W.shover.x + 12) + 'px';
+      tip.style.top = Math.min(h - 70, W.shover.y + 12) + 'px';
+    } else tip.hidden = true;
+  }
+  function drawSurprisePanel() {
+    const box = el().querySelector('.wm-sbody');
+    const g = W.ground, T = nowT();
+    const key = W.groundSeq + '|' + (W.T == null ? 'live' : Math.floor(W.T / 1000));
+    if (box._k === key) return;
+    box._k = key;
+    if (!g) { box.innerHTML = `<p class="dim">${esc(tr('Carico la mappa…'))}</p>`; return; }
+    const many = W.aid === 'all';
+    const sum = k => g.reactions.reduce((n, r) => n + (r[k] || 0), 0);
+    const ratio = (a, b) => (b ? `${a}/${b}` : '—');
+    let html = `<div class="gscore sstats">${esc(tr('si corregge {a} · segue la traccia {b} · catene complete {c}', { a: ratio(sum('corrects'), sum('total')), b: ratio(sum('follows'), sum('judged')), c: ratio(sum('complete'), sum('chains')) }))}</div>`;
+    const list = g.surprises.filter(s => s.t <= T).slice().reverse();
+    const who = s => (many ? `<span class="ag">${esc(s.agentName)}</span> ` : '');
+    const row = (t, inner) => `<div class="gi" data-t="${t}" title="${esc(tr('Vai a questo momento'))}">${inner}</div>`;
+    const chains = list.filter(s => s.refs && s.refs.length).slice(0, 40);
+    html += `<div class="gs"><div class="gt">${esc(tr('CATENE CAUSALI'))} <span class="n">${chains.length}</span></div>` + (chains.map(s => {
+      const [cl, cc] = s.chain.complete ? [tr('COMPLETA'), 'ok'] : (CAUSE[s.cause] || CAUSE.undecided);
+      const r0 = s.refs[0], fix = s.chain.fix;
+      const boxH = (cls, txt, tt) => `<span class="cbx ${cls}" title="${esc(tt || txt)}">${esc(txt)}</span>`;
+      return row(s.t, `<b class="${cc}">${esc(cl)}</b> ${who(s)}<span class="dim">${esc(hhmm(s.t))}</span><div class="chain">` +
+        boxH('err', FAIL_KIND[s.kind] || s.kind, s.excerpt) + '<i>→</i>' +
+        boxH('ref', r0.file.replace(/^abs:/, '') + ':' + r0.line + (s.refs.length > 1 ? ' +' + (s.refs.length - 1) : ''), s.refs.map(r => r.file + ':' + r.line).join('\n')) + '<i>→</i>' +
+        boxH(fix ? (fix.cited ? 'ok' : 'bad') : 'off', fix ? (fix.target || '').replace(/^(abs|cmd):/, '') : tr('nessuna modifica')) + '<i>→</i>' +
+        boxH(s.chain.confirm ? 'ok' : 'off', s.chain.confirm ? tr('di nuovo verde') : tr('non ancora')) + '</div>');
+    }).join('') || `<div class="dim">${esc(tr('nessuna: gli errori non citano file del progetto'))}</div>`) + '</div>';
+    const rest = list.filter(s => !(s.refs && s.refs.length)).slice(0, 30);
+    html += `<div class="gs"><div class="gt">${esc(tr('ALTRE SORPRESE'))} <span class="n">${rest.length}</span></div>` + (rest.map(s => {
+      const [rl, , rc] = REACT[s.reaction] || REACT.stops;
+      return row(s.t, `<b class="${rc}">${esc(rl)}</b> ${who(s)}<span class="q">${esc(what(s))}</span><br><span class="dim">${esc(hhmm(s.t))} · ${esc(FAIL_KIND[s.kind] || s.kind)} · ${esc(tr('sorpresa {p}%', { p: Math.round(s.value * 100) }))}${whyText(s) ? ' · ' + esc(whyText(s)) : ''}${s.discarded ? ' · ' + esc(tr('cita solo librerie')) : ''}</span>`);
+    }).join('') || `<div class="dim">${esc(tr('nessuno'))}</div>`) + '</div>';
+    html += `<p class="dim note">${esc(tr('Ricostruito dagli esiti dei comandi e dalle modifiche che seguono. «Segue la traccia» vuol dire che ha modificato un file citato dall\'errore, non che abbia capito davvero la causa.'))}</p>`;
+    box.innerHTML = html;
+  }
+
   let fogCache = null;
   function fogPattern(ctx) {
     if (fogCache) return ctx.createPattern(fogCache, 'repeat');
@@ -583,6 +685,8 @@
         if (s[4] === 1) { ctx.fillStyle = '#000'; ctx.fillRect(x(s[0]), ai * rowH + rowH / 2 - 1, 2, 2); }
       }
     });
+    // sorprese sulla linea del tempo, colorate per reazione
+    if (W.view === 'surp' && W.ground) for (const s of W.ground.surprises) if (s.t >= a && s.t <= b) { ctx.fillStyle = REACT[s.reaction] ? REACT[s.reaction][1] : '#c2c3c7'; const hh = Math.max(3, s.value * h); ctx.fillRect(x(s.t) - 1, h - hh, 3, hh); }
     // mappa contro territorio: affermazioni (colore dell'esito), ricordi scaduti e fantasmi sulla linea del tempo
     if (W.view === 'ground' && W.ground) {
       const tick = (t, col, y0, hh) => { if (t >= a && t <= b) { ctx.fillStyle = col; ctx.fillRect(x(t) - 1, y0, 3, hh); } };
@@ -819,6 +923,7 @@
     try {
       if (W.view === 'mind') { drawBubble(t); drawStar(); drawComposition(); drawTimeline(); }
       else if (W.view === 'ground') { drawTerritory(t, '.wm-gterr'); drawGroundPanel(); drawTimeline(); }
+      else if (W.view === 'surp') { drawSeismo(t); drawSurprisePanel(); drawTimeline(); }
       else { drawTerritory(t); drawTrajectory(t); drawRadar(); drawTimeline(); }
     } catch (err) { console.error(err); }
     requestAnimationFrame(loop);

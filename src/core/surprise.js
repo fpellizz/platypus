@@ -211,7 +211,7 @@ function surpriseAt(steps, i) {
   if (before.some(x => same(x) && x.err === false)) { v += 0.3; reasons.push('usedToWork'); }
   else if (RUNS.has(s.act) && !before.some(same)) { v -= 0.2; reasons.push('firstTry'); }
   // TDD: ha appena scritto un test che deve fallire
-  if (f.kind === 'test' && steps.slice(Math.max(0, i - 3), i).some(x => x.act === 'edit' && x.err === false && TEST_FILE.test(x.target || ''))) { v -= 0.2; reasons.push('tdd'); }
+  if (f.kind === 'test' && steps.slice(Math.max(0, i - 3), i).some(x => x.act === 'edit' && x.err === false && x.t <= s.t && TEST_FILE.test(x.target || ''))) { v -= 0.2; reasons.push('tdd'); }
   return { t: s.t, value: Math.round(Math.max(0, Math.min(1, v)) * 100) / 100, kind: f.kind, framework: f.framework || '', excerpt: f.excerpt || '', reasons, tool: s.tool, target: s.target };
 }
 
