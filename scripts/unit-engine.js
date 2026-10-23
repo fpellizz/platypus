@@ -88,10 +88,29 @@ function resumedSubTests(ok) {
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
+// archivio: durata e titolo di una sessione il cui file sta fra 64 e 256 KB
+function archiveTests(ok) {
+  const { listArchive } = require(path.join(ROOT, 'src', 'core', 'archive'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-'));
+  try {
+    const pdir = path.join(tmp, 'projects', 'proj');
+    fs.mkdirSync(pdir, { recursive: true });
+    const t0 = Date.parse('2026-10-20T09:00:00Z'), pad = 'x'.repeat(900);
+    let body = '';
+    for (let i = 0; i < 200; i++) body += JSON.stringify({ type: i % 2 ? 'assistant' : 'user', timestamp: iso(t0 + i * 60000), sessionId: 'sess-arch-0001', cwd: '/p/app', message: { role: i % 2 ? 'assistant' : 'user', content: i === 0 ? 'Rifai la pagina di login' : [{ type: 'text', text: pad }] } }) + '\n';
+    body += JSON.stringify({ type: 'ai-title', aiTitle: 'Nuova pagina di login', sessionId: 'sess-arch-0001' }) + '\n';
+    fs.writeFileSync(path.join(pdir, 'sess-arch-0001.jsonl'), body);
+    const x = listArchive({ base: tmp }).find(r => r.id === 'sess-arch-0001');
+    const kb = Math.round(body.length / 1024), min = x ? Math.round((x.end - x.start) / 60000) : -1;
+    ok(x && min === 199 && x.title === 'Nuova pagina di login' && x.start === t0, `archivio, file da ${kb} KB: durata ${min} min (vera 199) e titolo «${x && x.title}»`);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
   quietSubTests(ok);
   resumedSubTests(ok);
+  archiveTests(ok);
 }
 
 module.exports = { run };

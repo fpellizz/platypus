@@ -33,7 +33,8 @@ function parseLines(text, dropFirst, dropLast) {
 function summarize(p, st) {
   const head = parseLines(readSlice(p, 0, Math.min(HEAD, st.size)), false, st.size > HEAD);
   const tailStart = Math.max(0, st.size - TAIL);
-  const tail = tailStart > 0 ? parseLines(readSlice(p, tailStart, st.size - tailStart), true, false) : head;
+  // sotto i 256 KB la "coda" è tutto il file (la testa si ferma a 64 KB: fine e titolo stanno più avanti)
+  const tail = st.size > HEAD ? parseLines(readSlice(p, tailStart, st.size - tailStart), tailStart > 0, false) : head;
   let start = 0, end = 0, cwd = '', ep = '', title = '', prompt = '';
   for (const o of head) {
     const ts = Date.parse(o.timestamp);
