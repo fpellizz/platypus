@@ -229,7 +229,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     const only = aid === 'all' ? null : new Set([aid]);
     try {
       const opts = { only, replay: isReplay };
-      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, opts), ...grounding.findGhosts(s, agents, s.cwd, opts), ...grounding.checkClaims(s, agents, s.cwd, opts), ...surprise.surprises(agents, opts) };
+      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, opts), ...grounding.findGhosts(s, agents, s.cwd, opts), ...grounding.checkClaims(s, agents, s.cwd, opts), ...surprise.surprises(agents, { ...opts, now: st.now() }) };
     } catch (e) { return { ok: false, error: e.message }; }
   }
 

@@ -86,6 +86,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(sc.ok && sc.claims.some(c => c.agent === 'main' && c.kind === 'fixed' && c.status === 'grounded'), 'scenario: «ho corretto il refresh» ancorata dalla modifica');
   ok(sc.ok && !sc.blindEdits.some(b => b.agent === 'main' && b.key === 'src/auth/refresh.ts'), 'scenario: CLAUDE rilegge refresh.ts prima di modificarlo (niente modifica alla cieca)');
   ok(sc.ok && Array.isArray(sc.surprises) && sc.surprises.some(x => x.value >= 0.5 && x.kind === 'test'), `sorprese sul piano 1: ${sc.surprises ? sc.surprises.length : 0} (anche il test e2e che si incastra)`);
+  ok(sc.ok && sc.surprises.some(x => x.kind === 'test' && x.reaction === 'insists') && Array.isArray(sc.reactions), 'il test-runner bloccato insiste sullo stesso comando');
   const hook = await get(port, '/platypus-hook', 'POST', JSON.stringify({ session_id: 'smoke-1', hook_event_name: 'PreToolUse', cwd: tmp, tool_name: 'Read', tool_input: { file_path: 'a.txt' } }));
   ok(hook.status === 204, 'hook ricevuto → ' + hook.status);
   const perm = await get(port, '/platypus-hook/permission', 'POST', JSON.stringify({ session_id: 'smoke-1', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' } }));

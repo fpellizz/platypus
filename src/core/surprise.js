@@ -214,20 +214,51 @@ function surpriseAt(steps, i) {
   if (f.kind === 'test' && steps.slice(Math.max(0, i - 3), i).some(x => x.act === 'edit' && x.err === false && TEST_FILE.test(x.target || ''))) { v -= 0.2; reasons.push('tdd'); }
   return { t: s.t, value: Math.round(Math.max(0, Math.min(1, v)) * 100) / 100, kind: f.kind, framework: f.framework || '', excerpt: f.excerpt || '', reasons, tool: s.tool, target: s.target };
 }
-// agents: [{id, name, world}]; only: Set degli id da esaminare (null = tutti)
-function surprises(agents, { only = null } = {}) {
-  const out = [];
+
+// ---- dopo la sorpresa: si corregge, insiste o si ferma? (i 3 passi successivi dello stesso agente)
+const ASK_USER = new Set(['AskUserQuestion', 'ExitPlanMode']);
+const UNDECIDED_MS = 60000; // una sorpresa più recente di così, senza passi dopo, è ancora "in corso"
+function reactionAt(steps, i, { replies = [], goals = [], now = Date.now() } = {}) {
+  const s = steps[i];
+  const same = x => x.sig === s.sig || (RUNS.has(s.act) && s.target && x.target === s.target);
+  const next = steps.slice(i + 1, i + 4);
+  // fine del turno: ha risposto e poi è arrivata una nuova richiesta, prima del passo successivo
+  const until = next.length ? next[0].t : Infinity;
+  const reply = replies.find(r => r.t > s.t && r.t < until);
+  const turnEnded = reply && goals.some(g => g.t > reply.t && g.t <= until);
+  let reaction;
+  if (!next.length) reaction = reply || now - s.t > UNDECIDED_MS ? 'stops' : 'undecided';
+  else if (turnEnded || ASK_USER.has(next[0].tool)) reaction = 'stops';
+  else {
+    // insiste: ripete la stessa firma senza modifiche in mezzo
+    const k = next.findIndex(x => x.sig === s.sig);
+    reaction = k >= 0 && !next.slice(0, k).some(x => x.act === 'edit') ? 'insists' : 'corrects';
+  }
+  // tempo di recupero: fino al prossimo successo della stessa firma (o dello stesso comando di verifica)
+  let recovery = null;
+  for (let j = i + 1; j < steps.length; j++) if (same(steps[j]) && steps[j].err === false) { recovery = { steps: j - i, ms: steps[j].t - s.t }; break; }
+  return { reaction, recovery };
+}
+
+// agents: [{id, name, world, mind}]; only: Set degli id da esaminare (null = tutti)
+function surprises(agents, { only = null, now = Date.now() } = {}) {
+  const out = [], byAgent = [];
   for (const a of agents) {
     if (!a.world || (only && !only.has(a.id))) continue;
-    const st = a.world.steps;
+    const st = a.world.steps, ctx = { replies: a.world.replies || [], goals: (a.mind && a.mind.goals) || [], now };
+    let corrects = 0, total = 0;
     for (let i = 0; i < st.length; i++) {
       if (!st[i].err) continue;
       const x = surpriseAt(st, i);
-      if (x) out.push({ agent: a.id, agentName: a.name, ...x });
+      if (!x) continue;
+      const r = reactionAt(st, i, ctx);
+      if (r.reaction !== 'undecided') { total++; if (r.reaction === 'corrects') corrects++; }
+      out.push({ agent: a.id, agentName: a.name, ...x, ...r });
     }
+    if (total) byAgent.push({ id: a.id, name: a.name, corrects, total });
   }
   out.sort((x, y) => x.t - y.t);
-  return { surprises: out.slice(-300) };
+  return { surprises: out.slice(-300), reactions: byAgent };
 }
 
-module.exports = { classifyFailure, errorExcerpt, extractErrorRefs, surpriseAt, surprises, BASE };
+module.exports = { classifyFailure, errorExcerpt, extractErrorRefs, surpriseAt, reactionAt, surprises, BASE };

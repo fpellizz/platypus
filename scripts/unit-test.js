@@ -310,6 +310,45 @@ function surpriseTests(ok) {
   ok(x && x.kind === 'command' && x.value >= 0 && x.value <= 1, 'fallimento senza testo: comando generico');
   const all = sp.surprises([a, b, c, d]).surprises;
   ok(all.length === 6 && all.every((y, i) => !i || all[i - 1].t <= y.t), `elenco della sessione: ${all.length} sorprese in ordine di tempo`);
+
+  // B2: dopo la sorpresa si corregge, insiste o si ferma?
+  const reactionOf = (w, i, ctx) => sp.reactionAt(w.world.steps, i, ctx);
+  const ins = agent('i', 'TEST-RUNNER');
+  sh(ins.world, 'npm run test:e2e', 1000, true, 'FAIL tests/e2e/login.spec.ts');
+  sh(ins.world, 'npm run test:e2e', 2000, true, 'FAIL tests/e2e/login.spec.ts');
+  ok(reactionOf(ins, 0).reaction === 'insists', 'rilancia lo stesso comando senza cambiare nulla: insiste');
+  const cor = agent('k', 'CLAUDE');
+  sh(cor.world, 'npm test', 1000, true, 'FAIL src/a.test.ts\nTests: 1 failed');
+  act(cor.world, 'Read', 'src/a.ts', 2000);
+  act(cor.world, 'Edit', 'src/a.ts', 3000);
+  sh(cor.world, 'npm test', 4000, false, 'Tests: 3 passed');
+  let r = reactionOf(cor, 0);
+  ok(r.reaction === 'corrects' && r.recovery && r.recovery.steps === 3 && r.recovery.ms === 3000, `legge, modifica e rilancia: si corregge, recupero in ${r.recovery && r.recovery.steps} passi e ${r.recovery && r.recovery.ms / 1000} s`);
+  const arg = agent('g', 'CLAUDE');
+  sh(arg.world, 'npm test', 1000, true, 'FAIL src/a.test.ts');
+  sh(arg.world, 'npm test -- --runInBand', 2000, false, 'Tests: 3 passed');
+  ok(reactionOf(arg, 0).reaction === 'corrects', 'cambia gli argomenti del comando: si corregge');
+  const edm = agent('e', 'CLAUDE');
+  sh(edm.world, 'npm test', 1000, true, 'FAIL');
+  act(edm.world, 'Edit', 'src/a.ts', 2000);
+  sh(edm.world, 'npm test', 3000, true, 'FAIL');
+  ok(reactionOf(edm, 0).reaction === 'corrects', 'rilancia lo stesso comando ma dopo una modifica: non è insistere');
+  // si ferma: risponde e poi arriva una nuova richiesta dell'utente
+  const stp = agent('p', 'CLAUDE');
+  sh(stp.world, 'npm test', 1000, true, 'FAIL');
+  sh(stp.world, 'git status', 9000, false, 'clean');
+  r = reactionOf(stp, 0, { replies: [{ t: 2000, text: 'I test falliscono, come procedo?' }], goals: [{ t: 5000 }], now: 10000 });
+  ok(r.reaction === 'stops', 'fine del turno dopo la sorpresa: si ferma');
+  const ask = agent('q', 'CLAUDE');
+  sh(ask.world, 'npm test', 1000, true, 'FAIL');
+  ask.world.start('aq', 'AskUserQuestion', { questions: [] }, 2000, '/p', 0);
+  ok(reactionOf(ask, 0).reaction === 'stops', 'chiede all\'utente: si ferma');
+  const lst = agent('l', 'CLAUDE');
+  sh(lst.world, 'npm test', 1000, true, 'FAIL');
+  ok(reactionOf(lst, 0, { now: 1000 + 30000 }).reaction === 'undecided' && reactionOf(lst, 0, { now: 1000 + 120000 }).reaction === 'stops', 'ultimo passo: "in corso" per un minuto, poi si ferma');
+  const sum = sp.surprises([ins, cor, arg, edm], { now: 1e13 }).reactions;
+  const kk = sum.find(x => x.id === 'k'), ii = sum.find(x => x.id === 'i');
+  ok(kk && kk.corrects === 1 && kk.total === 1 && ii && ii.corrects === 0 && ii.total === 2, `indicatore per agente: si corregge ${kk && kk.corrects} volte su ${kk && kk.total}`);
 }
 
 function run(ok) {
