@@ -11,7 +11,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const MARKERS = { start: '<!-- platypus:bottega:start -->', end: '<!-- platypus:bottega:end -->' };
-const BOM = '﻿';
+const BOM = '\uFEFF';
 const BACKUP_EXT = '.platypus-backup';
 const NAME = /^claude\.md$/i;
 
@@ -32,7 +32,7 @@ function planUpsert(text, section) {
   const bom = s.startsWith(BOM) ? BOM : '';
   if (bom) s = s.slice(1);
   const eol = eolOf(s);
-  let body = String(section == null ? '' : section).replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/^\n+|\n+$/g, '');
+  let body = String(section == null ? '' : section).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').replace(/^\n+|\n+$/g, '');
   // una sezione che contiene i marcatori rovinerebbe il file alla prossima scrittura
   if (body.includes(MARKERS.start) || body.includes(MARKERS.end)) return { error: 'section' };
   body = body.split('\n').join(eol);

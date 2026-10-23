@@ -49,6 +49,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(i.status === 0, i.stdout.trim());
 
   require('./unit-test').run(ok);
+  require('./unit-claudemd').run(ok);
 
   console.log('motore');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-'));

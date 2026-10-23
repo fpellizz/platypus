@@ -40,8 +40,8 @@ function planTests(ok) {
   }
   // BOM
   {
-    const r = cm.planUpsert('﻿# P\n', 'x');
-    ok(r.text.startsWith('﻿# P\n') && r.text.indexOf('﻿', 1) < 0, 'BOM conservato, una volta sola');
+    const r = cm.planUpsert('\uFEFF# P\n', 'x');
+    ok(r.text.startsWith('\uFEFF# P\n') && r.text.indexOf('\uFEFF', 1) < 0, 'BOM conservato, una volta sola');
   }
   // senza a capo finale: se ne aggiungono solo quanti servono
   {
