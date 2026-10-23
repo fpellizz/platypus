@@ -481,6 +481,32 @@ function bindBoardTabs() {
   const r = $('#board').querySelector('[data-do=report]');
   if (r) r.onclick = () => window.open('/report', '_blank');
 }
+// mappa contro territorio del piano che stai guardando: chiesta al massimo ogni 10 s (il disco si guarda solo lì)
+const ground = { sid: null, t: 0, busy: false, stale: new Set(), claim: new Map() };
+async function loadGrounding() {
+  const replay = viewSid === 'replay';
+  const s = replay ? (replayFrame && replayFrame.session) : (viewSid && !isSpecial(viewSid) ? sessionById(viewSid) : null);
+  if (!s || ground.busy || (ground.sid === s.id && Date.now() - ground.t < 10000)) return;
+  ground.busy = true;
+  try {
+    const g = await (await fetch('/api/grounding?' + new URLSearchParams({ sid: s.id, aid: 'all', ...(replay ? { replay: '1' } : {}) }))).json();
+    if (!g || !g.ok) return;
+    ground.sid = s.id; ground.t = Date.now();
+    ground.stale = new Set(g.stale.map(x => x.agent));
+    // per ogni agente l'ultima risposta con affermazioni: conta solo se non è ancorata e (dal vivo) è recente
+    const claim = new Map(), newest = new Map();
+    for (const c of g.claims) if (c.t > (newest.get(c.agent) || 0)) newest.set(c.agent, c.t);
+    for (const c of g.claims) {
+      if (c.t !== newest.get(c.agent) || c.status === 'grounded' || (!replay && g.now - c.t > 300000)) continue;
+      const prev = claim.get(c.agent);
+      if (!prev || (c.status === 'contradicted' && prev.status !== 'contradicted')) claim.set(c.agent, c);
+    }
+    ground.claim = claim;
+  } catch {} finally { ground.busy = false; }
+}
+setInterval(loadGrounding, 3000);
+const groundFor = c => (c.npc || c.sid !== ground.sid ? null : { stale: ground.stale.has(c.id), claim: ground.claim.get(c.id) || null });
+
 async function loadCosts() { if (Date.now() - costsT < 60000 && costsData) return; costsT = Date.now(); try { costsData = await (await fetch('/api/stats/costs?days=14')).json(); } catch {} }
 async function loadHonors() { if (Date.now() - honorsT < 60000 && honorsData) return; honorsT = Date.now(); try { honorsData = await (await fetch('/api/stats/honors')).json(); } catch {} }
 let tabSig = '';
@@ -2494,6 +2520,12 @@ function drawChar(c, t) {
   }
   if (c.alert && a.status !== 'waiting' && ((t / 600) | 0) % 2) { R(ix, iy - 2, 5, 9, C.orange); R(ix + 1, iy - 1, 3, 1, C.black); R(ix + 3, iy, 1, 2, C.black); R(ix + 2, iy + 2, 1, 1, C.black); R(ix + 2, iy + 5, 1, 1, C.black); }
   if (a.status === 'done' || a.finished) { R(ix, iy, 1, 1, C.green); R(ix + 1, iy + 1, 1, 1, C.green); R(ix + 2, iy, 1, 1, C.green); R(ix + 3, iy - 1, 1, 1, C.green); R(ix + 4, iy - 2, 1, 1, C.green); }
+  const gr = groundFor(c);
+  if (gr && gr.stale) { // orologio: ha in testa un file che nel frattempo è cambiato (ricordo scaduto)
+    const ox = x - 11, oy = hy - 7;
+    R(ox + 1, oy + 1, 3, 3, C.black); R(ox + 1, oy, 3, 1, C.orange); R(ox, oy + 1, 1, 3, C.orange); R(ox + 4, oy + 1, 1, 3, C.orange); R(ox + 1, oy + 4, 3, 1, C.orange);
+    R(ox + 2, oy + 1, 1, 2, C.white); R(ox + 3, oy + 2, 1, 1, C.white);
+  }
   ctx.globalAlpha = 1;
 }
 
@@ -2504,7 +2536,7 @@ function wantsBalloon(c) {
   const a = c.data || {};
   if (c.npc) return !!c.speech || hoverId === c.id;
   if (c.phase === 'leave' || c.fadeAway || c.fadeOut) return false;
-  return allBalloons || c.role === 'boss' || c.role === 'manager' || a.status === 'waiting' || focusId === c.id || hoverId === c.id || c.phase === 'linger' || !!c.alert || !!c.errand;
+  return allBalloons || c.role === 'boss' || c.role === 'manager' || a.status === 'waiting' || focusId === c.id || hoverId === c.id || c.phase === 'linger' || !!c.alert || !!c.errand || !!(groundFor(c) || {}).claim;
 }
 
 function updateBalloon(c) {
@@ -2531,16 +2563,19 @@ function updateBalloon(c) {
   if (c.npc) action = c.speech || (c.npc === 'pest' ? tr('Passavo di qui…') : c.npc === 'hr' ? tr('Ha un richiamo da consegnare') : c.npc === 'relax' ? c.doing : tr('Pulizie in corso'));
   if (c.cheerUntil > performance.now() && c.role === 'boss' && floor && floor.s.party) action = tr('Evviva! {text}', { text: floor.s.party.text });
   const ap = c.npc ? null : approvalFor(c.sid, c.id);
-  const sig = status + '|' + action + '|' + a.description + '|' + a.type + '|' + a.seq + '|' + (focusId === c.id) + '|' + !!c.alert + '|' + (c.errand ? c.errand.type : '') + '|' + (ap ? ap.id : '');
+  const gc = (groundFor(c) || {}).claim;
+  const sig = status + '|' + action + '|' + a.description + '|' + a.type + '|' + a.seq + '|' + (focusId === c.id) + '|' + !!c.alert + '|' + (c.errand ? c.errand.type : '') + '|' + (ap ? ap.id : '') + '|' + (gc ? gc.status + gc.t : '');
   if (sig !== c.last) {
     c.last = sig;
-    c.el.className = 'balloon st-' + (c.npc ? 'npc' : c.errand && c.errand.type === 'rage' ? 'rage' : c.alert && status !== 'waiting' ? 'alert' : status) + (focusId === c.id ? ' focus' : '') + (a.kind === 'main' || !a.description ? ' compact' : '') + (ap ? ' asking' : '');
+    c.el.className = 'balloon st-' + (c.npc ? 'npc' : c.errand && c.errand.type === 'rage' ? 'rage' : c.alert && status !== 'waiting' ? 'alert' : status) + (focusId === c.id ? ' focus' : '') + (a.kind === 'main' || !a.description ? ' compact' : '') + (ap ? ' asking' : '') + (gc ? ' unground' : '');
     c.el.innerHTML =
       '<span class="nm">' + esc(agentName(a)) + (c.role === 'manager' ? ' · ' + tr('CAPO REPARTO') : '') + '</span>' +
       (a.kind === 'sub' && a.description ? '<span class="task">' + esc(a.description) + '</span>' : '') +
       '<span class="act"><i class="ico">' + esc(ICONS[status] || '') + '</i>' + esc(action) + '</span>' +
+      // affermazione dell'ultima risposta senza un fatto che la provi (o smentita dall'ultimo esito)
+      (gc ? '<span class="ung">' + esc(gc.status === 'contradicted' ? tr('smentita: «{text}»', { text: gc.text }) : tr('senza prove: «{text}»', { text: gc.text })) + '</span>' : '') +
       (ap ? askButtons(ap) : '');
-    c.el.title = agentName(a) + (a.description ? ' — ' + a.description : '') + '\n' + action;
+    c.el.title = agentName(a) + (a.description ? ' — ' + a.description : '') + '\n' + action + (gc ? '\n' + (gc.status === 'contradicted' ? tr('smentita: «{text}»', { text: gc.text }) : tr('senza prove: «{text}»', { text: gc.text })) : '');
   }
   const walking = c.moving;
   c.el.classList.toggle('walking', walking);

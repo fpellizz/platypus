@@ -42,5 +42,7 @@
   "Claude Code l'ha fermata: il file era cambiato dopo l'ultima lettura": "Claude Code stopped it: the file had changed since the last read",
   "modificato senza rileggerlo dopo la modifica di {who}": "edited without rereading it after {who}'s change",
   "Ricostruito da quello che l'agente fa e dice, non da quello che pensa. «Senza prove» vuol dire che nel turno non c'è un fatto che la confermi, non che sia falsa.": "Rebuilt from what the agent does and says, not from what it thinks. \"No evidence\" means nothing in the turn confirms it, not that it's false.",
-  "Disco non controllato: {why}.": "Disk not checked: {why}."
+  "Disco non controllato: {why}.": "Disk not checked: {why}.",
+  "smentita: «{text}»": "contradicted: «{text}»",
+  "senza prove: «{text}»": "no evidence: «{text}»"
 }

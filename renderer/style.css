@@ -571,3 +571,7 @@ body.widget #widget { display: block; flex: 1; padding: 6px 8px; overflow: hidde
 #worldmap .wm-gbody .clk { color: #ffa300; } #worldmap .wm-gbody .gq { color: #ff77a8; }
 #worldmap .wm-gbody .note { margin: 6px 0 0; }
 #worldmap .wm-tip .gh { color: #ff77a8; } #worldmap .wm-tip .st { color: #ffa300; }
+/* mappa contro territorio in ufficio: affermazione senza prove nell'ultima risposta */
+.balloon.unground { border-style: dashed; border-color: #ff77a8; }
+.balloon .ung { color: #7e2553; font-style: italic; }
+body.tiny .balloon .ung { display: none; }
