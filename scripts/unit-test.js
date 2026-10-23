@@ -271,7 +271,50 @@ function alertTests(ok) {
   ok(s.alerts.some(x => x.kind === 'grounding' && /src\/a\.ts/.test(x.text)), 'acceso: avviso per la modifica alla cieca');
 }
 
+// sorpresa dei fallimenti (B1): tipo deciso quando arriva l'esito, punteggio calcolato su richiesta
+function surpriseTests(ok) {
+  const sp = require(path.join(ROOT, 'src', 'core', 'surprise'));
+  const sh = (w, cmd, t, err, out) => { const id = 's' + (++seq); w.start(id, 'Bash', { command: cmd }, t, '/p', 0); w.end(id, err, { content: out }, {}, t + 100, '/p'); };
+  const val = (w) => sp.surpriseAt(w.world.steps, w.world.steps.length - 1);
+  // prima funzionava: npm test riusciva, ora fallisce
+  const a = agent('a', 'TEST-RUNNER');
+  sh(a.world, 'npm test', 1000, false, 'Tests: 12 passed, 12 total');
+  sh(a.world, 'npm test', 2000, true, 'FAIL src/auth/refresh.test.ts\n  ● refresh › renews the token\n    at Object.<anonymous> (src/auth/refresh.ts:42:7)\nTests: 1 failed, 11 passed, 12 total');
+  let x = val(a);
+  ok(x && x.kind === 'test' && x.value === 1 && x.reasons.includes('usedToWork'), `test che prima passava: sorpresa ${x && x.value} (${x && x.reasons.join(', ')})`);
+  ok(x && /refresh/.test(x.excerpt), 'estratto dell\'errore: ' + (x && x.excerpt));
+  const last = a.world.steps[a.world.steps.length - 1];
+  ok(last.refs && last.refs.refs.some(r => r.file === 'src/auth/refresh.ts' && r.line === 42), 'i file citati dall\'errore restano sul passo (per B3)');
+  // primo tentativo di un comando nuovo
+  const b = agent('b', 'CLAUDE');
+  sh(b.world, 'pnpm lint', 1000, true, 'bash: pnpm: command not found');
+  x = val(b);
+  ok(x && x.kind === 'command' && x.value === 0.3 && x.reasons.includes('firstTry'), `comando nuovo che fallisce al primo colpo: ${x && x.value}`);
+  // TDD: ha appena scritto un test che deve fallire
+  const c = agent('c', 'CLAUDE');
+  act(c.world, 'Write', 'tests/auth.test.ts', 1000);
+  sh(c.world, 'npx jest tests/auth.test.ts', 2000, true, 'FAIL tests/auth.test.ts\n  ● login › rejects a wrong password\nTests: 1 failed, 1 total');
+  x = val(c);
+  ok(x && x.kind === 'test' && x.reasons.includes('tdd') && x.value === 0.3, `TDD (test appena scritto che fallisce): ${x && x.value} (${x && x.reasons.join(', ')})`);
+  // Edit senza la stringa, permessi
+  const d = agent('d', 'CLAUDE');
+  act(d.world, 'Edit', 'src/a.ts', 1000, { err: true, out: 'String to replace not found in file.\nString: foo()' });
+  x = val(d);
+  ok(x && x.kind === 'edit' && x.value === 0.5, `Edit senza la stringa da sostituire: ${x && x.value}`);
+  act(d.world, 'Read', 'src/secret.key', 2000, { err: true, out: "EACCES: permission denied, open 'src/secret.key'" });
+  x = val(d);
+  ok(x && x.kind === 'permission' && x.value === 0.4, `permesso negato: ${x && x.value}`);
+  // un errore senza testo riconoscibile: comando generico
+  sh(d.world, 'make deploy', 3000, true, '');
+  x = val(d);
+  ok(x && x.kind === 'command' && x.value >= 0 && x.value <= 1, 'fallimento senza testo: comando generico');
+  const all = sp.surprises([a, b, c, d]).surprises;
+  ok(all.length === 6 && all.every((y, i) => !i || all[i - 1].t <= y.t), `elenco della sessione: ${all.length} sorprese in ordine di tempo`);
+}
+
 function run(ok) {
+  console.log('sorprese');
+  surpriseTests(ok);
   console.log('mappa contro territorio');
   groundingTests(ok);
   console.log('percorsi inventati');

@@ -25,6 +25,9 @@ const STALE_ERR = /modified since (it was )?(last )?read|has been (unexpectedly 
 // i luoghi che sono file del progetto (non comandi, siti, sottoagenti o file fuori dalla cartella)
 function isProjectFile(key) { return !!key && key !== '.' && !/^(abs|web|cmd|agent|tool):/.test(key); }
 const MAX_REPLIES = 20, REPLY_CHARS = 8000;
+// i parser dei fallimenti stanno in surprise.js, che a sua volta usa relKey di questo file: si carica al primo uso
+let surpriseMod = null;
+const surpriseLib = () => surpriseMod || (surpriseMod = require('./surprise'));
 // file che non ci sono: errori di Read/Edit e righe dell'output dei comandi (inglese e italiano)
 const MISSING_TOOL = /does not exist|ENOENT|No such file|non esiste|File o directory non esistente/i;
 const MISSING_OUT = [
@@ -255,6 +258,16 @@ class AgentWorld {
       const text = resultText(block, line);
       if (step.act === 'edit' && STALE_ERR.test(text)) step.staleErr = true;
       if (MISSING_TOOL.test(text)) this.ghost(step.target, t, 'tool', text.split('\n')[0]);
+    }
+    // un fallimento: che tipo è, la riga che lo dice e i file che cita (l'output non lo teniamo)
+    if (isErr) {
+      try {
+        const lib = surpriseLib(), text = resultText(block, line), cmd = String(step.sig || '').startsWith('run:') ? step.sig.slice(4) : '';
+        const f = lib.classifyFailure(text, cmd);
+        step.fail = f || { kind: 'command', framework: '', excerpt: lib.errorExcerpt(text) };
+        const r = lib.extractErrorRefs(text, cwd, this.shellCwd);
+        if (r.refs.length || r.discarded) step.refs = { refs: r.refs.slice(0, 10), discarded: r.discarded };
+      } catch {}
     }
     // l'output dei comandi può dire che un file non c'è, anche quando il comando nel complesso riesce
     if (step.act === 'run' || step.act === 'verify' || step.act === 'look') {

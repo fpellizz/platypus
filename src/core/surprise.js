@@ -194,4 +194,40 @@ function extractErrorRefs(output, cwd, shellCwd) {
   return { refs, discarded: dropped.size };
 }
 
-module.exports = { classifyFailure, errorExcerpt, extractErrorRefs };
+// ---- la sorpresa di ogni fallimento, tra 0 e 1, calcolata quando qualcuno la chiede ----
+// i passi sono quelli di AgentWorld: il tipo di fallimento (step.fail) lo scrive end() quando arriva l'esito
+const BASE = { test: 0.7, command: 0.5, missing: 0.6, permission: 0.4, timeout: 0.6, edit: 0.5, syntax: 0.6 };
+const TEST_FILE = /(^|\/)(?:tests?|__tests__|specs?)\/|\.(?:test|spec)\.\w+$/i;
+const RUNS = new Set(['run', 'verify', 'look']);
+function surpriseAt(steps, i) {
+  const s = steps[i];
+  if (!s || !s.err) return null;
+  const f = s.fail || { kind: 'command', framework: '', excerpt: '' };
+  let v = BASE[f.kind] != null ? BASE[f.kind] : 0.5;
+  const reasons = ['base'];
+  // lo stesso comando (o la stessa firma) prima riusciva: "prima funzionava"
+  const same = x => x.sig === s.sig || (RUNS.has(s.act) && s.target && x.target === s.target);
+  const before = steps.slice(0, i);
+  if (before.some(x => same(x) && x.err === false)) { v += 0.3; reasons.push('usedToWork'); }
+  else if (RUNS.has(s.act) && !before.some(same)) { v -= 0.2; reasons.push('firstTry'); }
+  // TDD: ha appena scritto un test che deve fallire
+  if (f.kind === 'test' && steps.slice(Math.max(0, i - 3), i).some(x => x.act === 'edit' && x.err === false && TEST_FILE.test(x.target || ''))) { v -= 0.2; reasons.push('tdd'); }
+  return { t: s.t, value: Math.round(Math.max(0, Math.min(1, v)) * 100) / 100, kind: f.kind, framework: f.framework || '', excerpt: f.excerpt || '', reasons, tool: s.tool, target: s.target };
+}
+// agents: [{id, name, world}]; only: Set degli id da esaminare (null = tutti)
+function surprises(agents, { only = null } = {}) {
+  const out = [];
+  for (const a of agents) {
+    if (!a.world || (only && !only.has(a.id))) continue;
+    const st = a.world.steps;
+    for (let i = 0; i < st.length; i++) {
+      if (!st[i].err) continue;
+      const x = surpriseAt(st, i);
+      if (x) out.push({ agent: a.id, agentName: a.name, ...x });
+    }
+  }
+  out.sort((x, y) => x.t - y.t);
+  return { surprises: out.slice(-300) };
+}
+
+module.exports = { classifyFailure, errorExcerpt, extractErrorRefs, surpriseAt, surprises, BASE };

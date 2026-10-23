@@ -11,7 +11,7 @@
 //   POST /api/focus          {sid}   porta in primo piano la finestra della sessione
 //   POST /api/resume         {key}   riprende una sessione chiusa in un nuovo terminale
 //   POST /api/open-folder    {sid|key}
-//   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca, percorsi inventati, affermazioni
+//   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca, percorsi inventati, affermazioni, sorprese
 
 const { dataDir } = require('../paths');
 const http = require('http');
@@ -22,6 +22,7 @@ const { OfficeState, DEFAULT_SETTINGS, displayName } = require('./state');
 const worldmap = require('./worldmap');
 const semantic = require('./semantic');
 const grounding = require('./grounding');
+const surprise = require('./surprise');
 const { TranscriptWatcher, SessionRegistry, claudeDir, findCoworkBases } = require('./sources');
 const { Weather } = require('./weather');
 const { describeTool } = require('./describe');
@@ -228,7 +229,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     const only = aid === 'all' ? null : new Set([aid]);
     try {
       const opts = { only, replay: isReplay };
-      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, opts), ...grounding.findGhosts(s, agents, s.cwd, opts), ...grounding.checkClaims(s, agents, s.cwd, opts) };
+      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, opts), ...grounding.findGhosts(s, agents, s.cwd, opts), ...grounding.checkClaims(s, agents, s.cwd, opts), ...surprise.surprises(agents, opts) };
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
