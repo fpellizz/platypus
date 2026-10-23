@@ -7,10 +7,18 @@
 //   POST /api/cowork         {on}
 //   GET/POST /api/settings   soglie degli avvisi, budget, prezzo di stima
 //   GET  /api/archive        sessioni passate
-//   POST /api/replay         {action: start|play|pause|speed|seek|stop, key, value}
+//   POST /api/replay         {action: start|play|pause|speed|seek|stop, key, value, at} (at: parti da quel momento, in pausa)
 //   POST /api/focus          {sid}   porta in primo piano la finestra della sessione
 //   POST /api/resume         {key}   riprende una sessione chiusa in un nuovo terminale
 //   POST /api/open-folder    {sid|key}
+//   GET  /api/bottega        {sid|cwd|key}  il Libro della bottega del progetto (lezioni dedotte dai fatti)
+//   GET  /api/bottega/list   i progetti che hanno un libro
+//   GET  /api/bottega/claudemd  {sid|cwd|key}  anteprima della sezione per il CLAUDE.md e se si può scrivere
+//   POST /api/bottega/claudemd  {sid|cwd|key, confirm: true}  la scrive tra i marcatori (con copia di sicurezza)
+//   POST /api/bottega        {sid|cwd, action: pin|ignore|unignore|forget, id}
+//   POST /api/bottega/learn  {sid|cwd}  impara dalle sessioni passate del progetto (in background)
+//   GET  /api/bottega/hints  {sid}  cosa direbbe il Nonno adesso: azioni in corso che corrispondono a una lezione
+//   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca, percorsi inventati, affermazioni, sorprese
 
 const { dataDir } = require('../paths');
 const http = require('http');
@@ -20,6 +28,10 @@ const path = require('path');
 const { OfficeState, DEFAULT_SETTINGS, displayName } = require('./state');
 const worldmap = require('./worldmap');
 const semantic = require('./semantic');
+const grounding = require('./grounding');
+const surprise = require('./surprise');
+const { Bottega, digest, hints, renderSection } = require('./bottega');
+const claudemd = require('./claudemd');
 const { TranscriptWatcher, SessionRegistry, claudeDir, findCoworkBases } = require('./sources');
 const { Weather } = require('./weather');
 const { describeTool } = require('./describe');
@@ -40,15 +52,29 @@ function defaultSettingsPath() { return path.join(dataDir(), 'settings.json'); }
 function loadSettings(p) { try { return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(p, 'utf8')) }; } catch { return { ...DEFAULT_SETTINGS }; } }
 function saveSettings(p, s) { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(s, null, 2)); } catch {} }
 
-function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPath = defaultSettingsPath(), statsPath, fetch: fetchImpl, osLocale } = {}) {
+function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPath = defaultSettingsPath(), statsPath, bottegaDir, fetch: fetchImpl, osLocale } = {}) {
   const initialSettings = loadSettings(settingsPath);
   i18n.setLang(i18n.resolveLang(initialSettings.lang, osLocale));
   const state = new OfficeState({ settings: initialSettings });
   const stats = new Stats(state, statsPath || path.join(path.dirname(settingsPath), 'stats.json'));
+  const bottega = new Bottega(bottegaDir || path.join(path.dirname(settingsPath), 'bottega'));
+  // il libro impara dalle sessioni aperte: gli stessi fatti della mappa, una volta al minuto
+  // (i casi già visti non contano due volte; la demo ha il suo libro finto)
+  function learnLive() {
+    let n = 0;
+    if (!state.settings.bottegaLearn) return 0;
+    for (const s of state.sessions.values()) {
+      if (s.demo || !s.cwd) continue;
+      try { const agents = agentsOf(s); if (agents.length) n += bottega.learn(s.cwd, digest(s, agents)); } catch {}
+    }
+    return n;
+  }
+  const learnTimer = setInterval(learnLive, 60000);
+  learnTimer.unref && learnTimer.unref();
   state.includeCowork = !!includeCowork;
   const watcher = new TranscriptWatcher(state, { base });
   const registry = new SessionRegistry(state, watcher, { base });
-  const demo = new Demo(state);
+  const demo = new Demo(state, { bottega });
   const weather = new Weather(state, fetchImpl ? { fetch: fetchImpl } : {});
   const clients = new Set();
   let replay = null;
@@ -215,6 +241,50 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
+  // gli agenti di una sessione con la loro mappa, per grounding.js, surprise.js e bottega.js
+  function agentsOf(s) {
+    return [s.main, ...s.subs.values()].filter(a => a.world).map(a => ({ id: a.id, name: displayName(a), world: a.world, mind: a.mind }));
+  }
+
+  // mappa contro territorio di un agente (o di tutta la sessione): calcolata solo su richiesta
+  function agentGrounding(q) {
+    const isReplay = !!q.get('replay');
+    const st = isReplay ? (replay && replay.state) : state;
+    const s = st && st.sessions.get(q.get('sid') || '');
+    if (!s) return { ok: false };
+    const aid = q.get('aid') || 'main';
+    const agents = agentsOf(s);
+    const only = aid === 'all' ? null : new Set([aid]);
+    try {
+      const opts = { only, replay: isReplay };
+      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, opts), ...grounding.findGhosts(s, agents, s.cwd, opts), ...grounding.checkClaims(s, agents, s.cwd, opts), ...surprise.surprises(agents, { ...opts, now: st.now() }) };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
+  // la cartella del progetto: dalla sessione (anche in replay) o passata direttamente
+  function projectCwd(q) {
+    const sid = q.sid || '';
+    const s = sid && (state.sessions.get(sid) || (replay && replay.state.sessions.get(sid)));
+    if (s) return s.cwd;
+    if (typeof q.key === 'string' && /^[0-9a-f]{16}$/.test(q.key)) return bottega.cwdOfKey(q.key);
+    return typeof q.cwd === 'string' ? q.cwd.slice(0, 500) : '';
+  }
+
+  // la sezione per il CLAUDE.md del progetto: testo, percorso e se si può scrivere (mai Cowork, mai la demo)
+  function claudeMdPlan(q) {
+    const cwd = projectCwd(q);
+    if (!cwd) return null;
+    const v = bottega.view(cwd);
+    const norm = x => String(x || '').replace(/\\/g, '/').toLowerCase();
+    const same = [...state.sessions.values()].filter(s => norm(s.cwd) === norm(cwd));
+    const markdown = renderSection(v.lessons, v.name);
+    let why = '';
+    if (same.some(s => s.demo)) why = 'demo';
+    else if (same.some(s => s.kind === 'cowork')) why = 'cowork';
+    else { const cw = claudemd.canWrite(cwd); if (!cw.ok) why = cw.reason; }
+    return { cwd, markdown, path: require('path').join(cwd, 'CLAUDE.md'), writable: !why && !!markdown, reason: why || (markdown ? '' : 'empty') };
+  }
+
   function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); }
   function liveIds() { return new Set([...state.sessions.values()].filter(s => !s.ended).map(s => s.id)); }
 
@@ -257,6 +327,26 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
       case '/api/cowork':
         state.setIncludeCowork(typeof j.on === 'boolean' ? j.on : !state.includeCowork);
         return json(res, 200, { includeCowork: state.includeCowork });
+      case '/api/bottega/claudemd': {
+        const p = claudeMdPlan(j);
+        if (!p) return json(res, 404, { ok: false });
+        if (j.confirm !== true) return json(res, 400, { ok: false, reason: 'confirm' }); // mai in automatico
+        if (!p.writable) return json(res, 409, { ok: false, reason: p.reason });
+        return json(res, 200, { path: p.path, ...claudemd.upsertSection(p.path, p.markdown) });
+      }
+      case '/api/bottega/learn': {
+        const cwd = projectCwd(j);
+        if (!cwd) return json(res, 404, { ok: false });
+        if (!state.settings.bottegaLearn) return json(res, 409, { ok: false, reason: tr('L\'apprendimento del Libro della bottega è spento nelle opzioni.') });
+        const job = bottega.learnFromArchive(cwd, { base, settings: state.settings, liveIds: liveIds() });
+        return json(res, 200, { ok: true, learning: { running: job.running, total: job.total, done: job.done } });
+      }
+      case '/api/bottega': {
+        const cwd = projectCwd(j);
+        if (!cwd) return json(res, 404, { ok: false });
+        const ok = bottega.act(cwd, String(j.action || ''), String(j.id || ''));
+        return json(res, ok ? 200 : 404, { ok });
+      }
       case '/api/demo': {
         const on = typeof j.on === 'boolean' ? j.on : !demo.on;
         on ? demo.start() : demo.stop();
@@ -289,6 +379,9 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
           replay.title = info ? (info.kind === 'cowork' ? info.title || info.project : info.project) : '';
           replay.on('frame', sendReplayFrame);
           if (j.speed) replay.control('speed', j.speed);
+          // dal Libro della bottega: il replay parte poco prima del momento della prova, in pausa
+          const at = Number(j.at);
+          if (at > replay.start) { replay.seek(Math.max(0, (at - 5000 - replay.start) / Math.max(1, replay.end - replay.start))); replay.control('pause'); }
           broadcast(payload());
           return json(res, 200, { ok: true, key: j.key });
         }
@@ -353,6 +446,18 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     if (url.pathname === '/api/cowork-scan') return json(res, 200, state.coworkScan || {});
     if (url.pathname === '/api/agentmap') return json(res, 200, agentMap(url.searchParams));
     if (url.pathname === '/api/agentmind') return json(res, 200, agentMind(url.searchParams));
+    if (url.pathname === '/api/grounding') return json(res, 200, agentGrounding(url.searchParams));
+    if (url.pathname === '/api/bottega/list') return json(res, 200, { ok: true, books: bottega.list() });
+    if (url.pathname === '/api/bottega/claudemd') { const p = claudeMdPlan(Object.fromEntries(url.searchParams)); return p ? json(res, 200, { ok: true, ...p }) : json(res, 404, { ok: false }); }
+    if (url.pathname === '/api/bottega/hints') {
+      const s = state.sessions.get(url.searchParams.get('sid') || '');
+      if (!s || !s.cwd) return json(res, 404, { ok: false });
+      try { return json(res, 200, { ok: true, hints: hints(s, agentsOf(s), bottega.view(s.cwd).lessons, state.now()) }); } catch (e) { return json(res, 200, { ok: false, error: e.message }); }
+    }
+    if (url.pathname === '/api/bottega') {
+      const cwd = projectCwd(Object.fromEntries(url.searchParams));
+      return cwd ? json(res, 200, { ok: true, ...bottega.view(cwd) }) : json(res, 404, { ok: false });
+    }
     if (url.pathname === '/api/stats/costs') return json(res, 200, stats.costHistory(Math.min(90, Number(url.searchParams.get('days')) || 14)));
     if (url.pathname === '/api/stats/honors') return json(res, 200, stats.honors());
     if (url.pathname === '/api/report') {
@@ -400,12 +505,14 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     for (const id of [...approvals.keys()]) finishApproval(id, null);
     if (replay) replay.stop();
     stats.stop();
+    clearInterval(learnTimer);
+    bottega.stop();
     state.stop();
     for (const c of clients) try { c.end(); } catch {}
     server.close();
   }
 
-  return { state, stats, demo, server, ready, stop, port, base: base || claudeDir(), hooks: {
+  return { state, stats, bottega, learnLive, demo, server, ready, stop, port, base: base || claudeDir(), hooks: {
     install: () => hooks.install({ port, base }),
     uninstall: () => hooks.uninstall({ base }),
     status: () => hooks.status({ base }),

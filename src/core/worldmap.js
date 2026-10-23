@@ -19,6 +19,46 @@ const WINDOW = 8;
 const MAX_STEPS = 500, MAX_NODES = 6000;
 // livello di conoscenza di un luogo: 1 visto di sfuggita (frontiera), 2 letto, 3 modificato
 const LV = { seen: 1, read: 2, edit: 3 };
+const MAX_EDITS = 20;
+// Claude Code rifiuta la modifica di un file cambiato dopo l'ultima lettura: il ricordo scaduto è preso in tempo
+const STALE_ERR = /modified since (it was )?(last )?read|has been (unexpectedly )?modified|changed since (it was )?(last )?read/i;
+// i luoghi che sono file del progetto (non comandi, siti, sottoagenti o file fuori dalla cartella)
+function isProjectFile(key) { return !!key && key !== '.' && !/^(abs|web|cmd|agent|tool):/.test(key); }
+const MAX_REPLIES = 20, REPLY_CHARS = 8000;
+// i parser dei fallimenti stanno in surprise.js, che a sua volta usa relKey di questo file: si carica al primo uso
+let surpriseMod = null;
+const surpriseLib = () => surpriseMod || (surpriseMod = require('./surprise'));
+// file che non ci sono: errori di Read/Edit e righe dell'output dei comandi (inglese e italiano)
+const MISSING_TOOL = /does not exist|ENOENT|No such file|non esiste|File o directory non esistente/i;
+const MISSING_OUT = [
+  /^(?:[\w.\-]+: )*(?:cannot access |cannot open |can't open )?(['"`]?)([^'"`\n]+?)\1: (?:No such file or directory|File o directory non esistente)/gim, // cat: x: No such file…
+  /No such file or directory: (['"`]?)([^'"`\n]+)\1/gi,                                                        // Python
+  /no such file or directory, \w+ (['"`])([^'"`\n]+)\1/gi,                                                   // Node (ENOENT)
+  /can't open file (['"`])([^'"`\n]+)\1/gi,                                                                    // python x.py
+  /cannot find (?:module |file |path )?(['"`])([^'"`\n]+)\1/gi,                                              // Node, tsc, PowerShell
+  /Impossibile trovare (?:il percorso |il file |il modulo )?(['"`])([^'"`\n]+)\1/gi,                         // PowerShell in italiano
+  /pathspec (['"`])([^'"`\n]+)\1 did not match any files?/gi,                                                  // git
+];
+// percorsi dei file mancanti citati in un output (validati con le stesse regole dei comandi)
+function missingPathsInOutput(text) {
+  const out = [];
+  const s = String(text || '').slice(0, 60000);
+  if (!/No such file|ENOENT|cannot find|can't open|Impossibile trovare|non esistente|did not match any file/i.test(s)) return out;
+  for (const re of MISSING_OUT) {
+    re.lastIndex = 0;
+    let m, guard = 0;
+    while ((m = re.exec(s)) && guard++ < 200) {
+      const cand = m[2].trim().replace(/\\\\/g, '\\').replace(/[.,;]+$/, '');
+      const ok = /\s/.test(cand) ? /^([A-Za-z]:[\\/]|\/|\.{0,2}[\\/])/.test(cand) && EXT.test(cand) : pathsInCommand(cand)[0] === cand;
+      if (ok && !out.some(o => o.path === cand)) out.push({ path: cand, line: lineAround(s, m.index) });
+    }
+  }
+  return out.slice(0, 20);
+}
+function lineAround(s, i) {
+  const a = s.lastIndexOf('\n', i) + 1, b = s.indexOf('\n', i);
+  return s.slice(a, b < 0 ? s.length : b).trim().slice(0, 160);
+}
 
 function normSlashes(p) { return String(p || '').replace(/\\/g, '/').replace(/\/+$/, ''); }
 // percorso relativo alla cartella della sessione; fuori dal progetto diventa "abs:<percorso>"
@@ -100,10 +140,24 @@ function listedPaths(text, r) {
 
 class AgentWorld {
   constructor() {
-    this.nodes = new Map(); // key -> {seen, read, edit, created, n, last}
+    this.nodes = new Map(); // key -> {seen, read, edit, created, n, last, lastSync, edits}
     this.steps = [];
     this.open = new Map();  // toolUseId -> step
     this.shellCwd = null;   // cartella corrente della shell dell'agente
+    this.replies = [];      // ultime risposte complete {t, text}, solo in memoria
+  }
+  reply(t, text) {
+    const x = String(text || '').trim();
+    if (!x) return;
+    this.replies.push({ t, text: x.slice(0, REPLY_CHARS) });
+    if (this.replies.length > MAX_REPLIES) this.replies.shift();
+  }
+  // un file che l'agente cerca e che non c'è: "fantasma" (la prima volta che succede)
+  ghost(key, t, src, line) {
+    if (!isProjectFile(key) && !String(key || '').startsWith('abs:')) return;
+    this.touch(key, LV.seen, t);
+    const nd = this.nodes.get(key);
+    if (nd && !nd.ghost) Object.assign(nd, { ghost: true, ghostAt: t, ghostSrc: src, ghostLine: String(line || '').slice(0, 160) });
   }
   touch(key, level, t, created) {
     if (!key) return null;
@@ -111,7 +165,9 @@ class AgentWorld {
     const fresh = !n;
     if (!n) {
       if (this.nodes.size >= MAX_NODES) return null;
-      n = { seen: 0, read: 0, edit: 0, created: false, n: 0, last: 0 };
+      // lastSync: ultimo esito riuscito che gli ha mostrato il contenuto vero (lettura o sua modifica)
+      // edits: quando le sue modifiche sono riuscite (servono a dire "cambiato da …" agli altri agenti)
+      n = { seen: 0, read: 0, edit: 0, created: false, n: 0, last: 0, lastSync: 0, edits: [] };
       this.nodes.set(key, n);
     }
     if (level >= LV.seen && !n.seen) n.seen = t;
@@ -165,6 +221,8 @@ class AgentWorld {
     }
     if (act === 'read' || act === 'edit') sig = name + ':' + target;
     const step = { id, t, tool: name, act, target, isNew, sig, err: null, ctx: ctx || 0, vec: null, phase: '' };
+    // per le modifiche: l'ultimo contatto col file prima di questa (serve a scoprire le modifiche alla cieca)
+    if (act === 'edit' && isProjectFile(target)) { const nd = this.nodes.get(target); step.prevSync = nd ? nd.lastSync : 0; }
     this.steps.push(step);
     if (this.steps.length > MAX_STEPS) this.steps.splice(0, this.steps.length - MAX_STEPS);
     if (id) this.open.set(id, step);
@@ -177,6 +235,7 @@ class AgentWorld {
     if (!step) return;
     this.open.delete(id);
     step.err = !!isErr;
+    step.dur = Math.max(0, t - step.t);
     if (!isErr) {
       const text = resultText(block, line);
       const r = line && line.toolUseResult;
@@ -187,6 +246,36 @@ class AgentWorld {
       else if (step.act === 'read' && step.target && !step.target.startsWith('web:')) {
         const from = step.target.startsWith('abs:') ? null : step.target;
         if (from) for (const p of referencesIn(text, from)) this.touch(p, LV.seen, t);
+      }
+      // fa fede l'esito: da qui l'agente conosce il contenuto vero del file
+      if ((step.act === 'read' || step.act === 'edit') && isProjectFile(step.target)) {
+        const nd = this.nodes.get(step.target);
+        if (nd) {
+          nd.lastSync = t;
+          if (step.act === 'edit') { nd.edits.push(t); if (nd.edits.length > MAX_EDITS) nd.edits.shift(); }
+        }
+      }
+    } else if (step.act === 'edit' || step.act === 'read') {
+      const text = resultText(block, line);
+      if (step.act === 'edit' && STALE_ERR.test(text)) step.staleErr = true;
+      if (MISSING_TOOL.test(text)) this.ghost(step.target, t, 'tool', text.split('\n')[0]);
+    }
+    // un fallimento: che tipo è, la riga che lo dice e i file che cita (l'output non lo teniamo)
+    if (isErr) {
+      try {
+        const lib = surpriseLib(), text = resultText(block, line), cmd = String(step.sig || '').startsWith('run:') ? step.sig.slice(4) : '';
+        const f = lib.classifyFailure(text, cmd);
+        step.fail = f || { kind: 'command', framework: '', excerpt: lib.errorExcerpt(text) };
+        const r = lib.extractErrorRefs(text, cwd, this.shellCwd);
+        if (r.refs.length || r.discarded) step.refs = { refs: r.refs.slice(0, 10), discarded: r.discarded };
+      } catch {}
+    }
+    // l'output dei comandi può dire che un file non c'è, anche quando il comando nel complesso riesce
+    if (step.act === 'run' || step.act === 'verify' || step.act === 'look') {
+      const base = this.shellCwd;
+      for (const g of missingPathsInOutput(resultText(block, line))) {
+        const full = base && !/^([A-Za-z]:[\\/]|\/|~)/.test(g.path) ? base + '/' + g.path : g.path;
+        this.ghost(relKey(full, cwd), t, 'output', g.line);
       }
     }
     const i = this.steps.lastIndexOf(step);
@@ -300,4 +389,4 @@ function resolveAgainstTree(nodes, tree) {
   return [...merged.values()];
 }
 
-module.exports = { mainCommand, AgentWorld, scanTree, resolveAgainstTree, relKey, referencesIn, listedPaths, pathsInCommand, DIMS, phaseOf };
+module.exports = { mainCommand, AgentWorld, scanTree, resolveAgainstTree, relKey, referencesIn, listedPaths, pathsInCommand, missingPathsInOutput, isProjectFile, EXT, DIMS, phaseOf };

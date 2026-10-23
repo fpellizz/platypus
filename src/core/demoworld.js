@@ -142,7 +142,8 @@ class DemoWorld {
 
   // un po' di storia già fatta, così le mappe non partono vuote
   seed(s, a, steps, stuckCmd) {
-    const t0 = Date.now() - steps * 25000;
+    // chi si incastra ha lavorato prima di incastrarsi: la sua storia finisce dove iniziano i tentativi falliti
+    const t0 = Date.now() - steps * 25000 - (stuckCmd ? 15 * 60000 : 0);
     for (let i = 0; i < steps; i++) {
       const st = this.next(s, a);
       const t = t0 + i * 25000;

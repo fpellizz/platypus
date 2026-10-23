@@ -548,3 +548,82 @@ body.widget #widget { display: block; flex: 1; padding: 6px 8px; overflow: hidde
 #worldmap .wm-compbody .fg { color: var(--ink); border-top: 1px dashed #2a2440; padding-top: 4px; }
 #worldmap .wm-terr, #worldmap .wm-traj, #worldmap .wm-radar, #worldmap .wm-bub, #worldmap .wm-star, #worldmap .wm-comp { min-width: 0; overflow: hidden; }
 #worldmap canvas { min-width: 0; max-width: 100%; }
+/* mappa della realtà: vista "mappa e territorio" */
+#worldmap .wm-ground { display: none; }
+#worldmap.view-ground .wm-body:not(.wm-ground) { display: none; }
+#worldmap.view-ground .wm-ground { display: grid; }
+#worldmap .wm-gterr, #worldmap .wm-gside { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; border: 2px solid #1d1a2b; }
+#worldmap .wm-gbody { flex: 1; min-height: 0; overflow: auto; padding: 6px; font-size: 15px; line-height: 1.1; }
+#worldmap .wm-gbody b { font-family: 'PS2P'; font-size: 7px; font-weight: normal; color: #000; padding: 2px 4px; background: #c2c3c7; }
+#worldmap .wm-gbody b.ok { background: #00e436; } #worldmap .wm-gbody b.mid { background: #ffec27; } #worldmap .wm-gbody b.bad { background: #ff004d; color: #fff; }
+#worldmap .wm-gbody b.later { background: #83769c; color: #fff; }
+#worldmap .wm-gbody .gscore { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-family: 'PS2P'; font-size: 8px; color: #c2c3c7; }
+#worldmap .wm-gbody .gscore .dim { font-family: 'VT'; font-size: 15px; }
+#worldmap .wm-gbody .gscore b { font-size: 14px; padding: 6px 8px; min-width: 64px; text-align: center; }
+#worldmap .wm-gbody .gs { margin-bottom: 8px; }
+#worldmap .wm-gbody .gt { font-family: 'PS2P'; font-size: 7px; color: #00e436; border-bottom: 1px dashed #2a2440; padding-bottom: 3px; margin-bottom: 3px; }
+#worldmap .wm-gbody .gt .n { color: var(--yellow); }
+#worldmap .wm-gbody .gi { padding: 3px 2px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; }
+#worldmap .wm-gbody .gi:hover { background: #14111f; }
+#worldmap .wm-gbody .q { color: var(--ink); }
+#worldmap .wm-gbody .k { color: #9fd8ff; word-break: break-all; }
+#worldmap .wm-gbody .ag { color: var(--yellow); }
+#worldmap .wm-gbody .clk { color: #ffa300; } #worldmap .wm-gbody .gq { color: #ff77a8; }
+#worldmap .wm-gbody .note { margin: 6px 0 0; }
+#worldmap .wm-tip .gh { color: #ff77a8; } #worldmap .wm-tip .st { color: #ffa300; }
+/* mappa contro territorio in ufficio: affermazione senza prove nell'ultima risposta */
+.balloon.unground { border-style: dashed; border-color: #ff77a8; }
+.balloon .ung { color: #7e2553; font-style: italic; }
+body.tiny .balloon .ung { display: none; }
+/* con tre viste l'intestazione non ci sta sempre: i pulsanti delle viste si stringono, "?" e "X" restano visibili */
+#worldmap .wm-head > .wm-views { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+#worldmap .wm-views button { min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#worldmap .wm-head > .wm-phase, #worldmap .wm-head > .wm-stats { flex-shrink: 1000; }
+#worldmap.view-ground .wm-head > .wm-phase { display: none; }
+/* mappa della realtà: vista "sorpresa e cause" */
+#worldmap .wm-surp { display: none; }
+#worldmap.view-surp .wm-body:not(.wm-surp) { display: none; }
+#worldmap.view-surp .wm-surp { display: grid; }
+#worldmap.view-surp .wm-head > .wm-phase { display: none; }
+#worldmap .wm-seis { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; border: 2px solid #1d1a2b; }
+#worldmap .wm-seis canvas { cursor: crosshair; }
+#worldmap .wm-gbody .sstats { font-family: 'VT'; font-size: 17px; color: var(--yellow); }
+#worldmap .wm-gbody .chain { display: flex; align-items: center; gap: 3px; margin-top: 3px; flex-wrap: wrap; }
+#worldmap .wm-gbody .chain i { color: var(--dim); font-style: normal; }
+#worldmap .wm-gbody .cbx { border: 1px solid #5f574f; padding: 0 4px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#worldmap .wm-gbody .cbx.err { border-color: #ff004d; color: #ff77a8; }
+#worldmap .wm-gbody .cbx.ref { border-color: #29adff; color: #9fd8ff; }
+#worldmap .wm-gbody .cbx.ok { border-color: #00e436; color: #00e436; }
+#worldmap .wm-gbody .cbx.bad { border-color: #ffa300; color: #ffa300; }
+#worldmap .wm-gbody .cbx.off { border-style: dashed; color: var(--dim); }
+/* Libro della bottega */
+#bottega { position: absolute; right: 10px; top: 10px; bottom: 10px; z-index: 4000; width: min(560px, calc(100% - 20px)); display: flex; flex-direction: column;
+  background: #14111f; border: 3px solid #8b5a2b; box-shadow: 5px 5px 0 #000; padding: 10px 12px; font-size: 17px; }
+#bottega[hidden] { display: none !important; }
+#bottega h3 { font-family: 'PS2P'; font-size: 10px; color: var(--yellow); margin: 0 26px 6px 0; }
+#bottega .x { position: absolute; right: 10px; top: 8px; font-family: 'PS2P'; font-size: 10px; cursor: pointer; color: var(--dim); }
+#bottega .honest { margin: 0 0 6px; color: var(--dim); font-size: 15px; }
+#bottega .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+#bottega button { font-family: 'PS2P'; font-size: 7px; background: #2a2440; color: var(--ink); border: 0; padding: 5px 7px; cursor: pointer; }
+#bottega button.danger { background: #3a1420; color: #ff77a8; }
+#bottega .prog { color: var(--yellow); }
+#bottega .list { flex: 1; min-height: 0; overflow: auto; }
+#bottega .lesson { border: 2px solid #2a2440; padding: 6px 8px; margin-bottom: 6px; }
+#bottega .lesson.focus { border-color: var(--yellow); }
+#bottega .lt { color: var(--ink); }
+#bottega .lt b { font-family: 'PS2P'; font-size: 7px; font-weight: normal; color: #000; background: #c2c3c7; padding: 2px 4px; margin-right: 4px; }
+#bottega .lt b.ok { background: var(--green); } #bottega .lt b.pin { background: var(--yellow); } #bottega .lt b.off { background: #5f574f; color: #fff; }
+#bottega .ld { color: var(--dim); font-size: 15px; margin: 2px 0; }
+#bottega .ev { margin: 4px 0; padding-left: 16px; font-size: 15px; }
+#bottega .ev li { margin-bottom: 2px; overflow-wrap: anywhere; }
+#bottega .ev .w { color: var(--yellow); } #bottega .ev .ag { color: #9fd8ff; }
+#bottega .ev button { padding: 2px 4px; margin-left: 4px; }
+#bottega .la { display: flex; gap: 6px; margin-top: 4px; }
+#bottega .tog { display: block; width: 100%; text-align: left; margin: 6px 0; background: transparent; color: var(--dim); }
+#board tr.click { cursor: pointer; }
+#board tr.click:hover td { background: #2a2440; }
+#bottega .md { border: 2px dashed var(--yellow); padding: 6px 8px; margin-bottom: 6px; }
+#bottega .md .mh { font-family: 'PS2P'; font-size: 7px; color: var(--yellow); margin-bottom: 4px; overflow-wrap: anywhere; }
+#bottega .md .mh .dim { font-family: 'VT'; font-size: 14px; }
+#bottega .md pre { white-space: pre-wrap; font-family: 'VT'; font-size: 15px; background: #000; color: var(--ink); padding: 6px; margin: 0 0 6px; max-height: 30vh; overflow: auto; }
+#bottega button[disabled] { opacity: .45; cursor: not-allowed; }

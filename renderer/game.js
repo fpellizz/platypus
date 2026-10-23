@@ -135,6 +135,7 @@ function toast(msg, ok = true) {
   clearTimeout(toast._t); toast._t = setTimeout(() => { el.hidden = true; }, 3500);
 }
 async function sessionAction(what, sid) {
+  if (what === 'book') return window.openBottega && openBottega(sid);
   if (what === 'focus') {
     const r = await api('/api/focus', { sid });
     toast(r.ok ? (r.approx ? tr('Ho portato in primo piano {app} (non sono sicuro della finestra esatta)', { app: r.app || tr('l\'app') }) : tr('Finestra in primo piano: {app}', { app: r.app || '' })) : (r.reason || tr('Non trovata')), r.ok);
@@ -474,23 +475,81 @@ function updateBoard() {
 // ---- schede del tabellone: sessioni, costi nel tempo, onori
 let boardTab = 'sessions', costsData = null, costsT = 0, honorsData = null, honorsT = 0;
 function boardTabs() {
-  return `<div class="tabs">${[['sessions', tr('SESSIONI')], ['costs', tr('COSTI')], ['honors', tr('ONORI')]].map(([k, l]) => `<button data-tab="${k}" class="${boardTab === k ? 'on' : ''}">${l}</button>`).join('')}<button data-do="report" title="${esc(tr('Apre il report di oggi'))}">${tr('REPORT DI OGGI')}</button></div>`;
+  return `<div class="tabs">${[['sessions', tr('SESSIONI')], ['costs', tr('COSTI')], ['honors', tr('ONORI')], ['bottega', tr('BOTTEGA')]].map(([k, l]) => `<button data-tab="${k}" class="${boardTab === k ? 'on' : ''}">${l}</button>`).join('')}<button data-do="report" title="${esc(tr('Apre il report di oggi'))}">${tr('REPORT DI OGGI')}</button></div>`;
 }
 function bindBoardTabs() {
   for (const b of $('#board').querySelectorAll('[data-tab]')) b.onclick = () => { boardTab = b.dataset.tab; boardSig = ''; updateBoard(); };
   const r = $('#board').querySelector('[data-do=report]');
   if (r) r.onclick = () => window.open('/report', '_blank');
 }
+// mappa contro territorio del piano che stai guardando: chiesta al massimo ogni 10 s (il disco si guarda solo lì)
+const ground = { sid: null, t: 0, busy: false, stale: new Set(), claim: new Map(), bang: new Map(), puzzled: new Set(), seen: new Map() };
+async function loadGrounding() {
+  const replay = viewSid === 'replay';
+  const s = replay ? (replayFrame && replayFrame.session) : (viewSid && !isSpecial(viewSid) ? sessionById(viewSid) : null);
+  if (!s || ground.busy || (ground.sid === s.id && Date.now() - ground.t < 10000)) return;
+  ground.busy = true;
+  try {
+    const g = await (await fetch('/api/grounding?' + new URLSearchParams({ sid: s.id, aid: 'all', ...(replay ? { replay: '1' } : {}) }))).json();
+    if (!g || !g.ok) return;
+    ground.sid = s.id; ground.t = Date.now();
+    ground.stale = new Set(g.stale.map(x => x.agent));
+    // per ogni agente l'ultima risposta con affermazioni: conta solo se non è ancorata e (dal vivo) è recente
+    const claim = new Map(), newest = new Map();
+    for (const c of g.claims) if (c.t > (newest.get(c.agent) || 0)) newest.set(c.agent, c.t);
+    for (const c of g.claims) {
+      if (c.t !== newest.get(c.agent) || c.status === 'grounded' || (!replay && g.now - c.t > 300000)) continue;
+      const prev = claim.get(c.agent);
+      if (!prev || (c.status === 'contradicted' && prev.status !== 'contradicted')) claim.set(c.agent, c);
+    }
+    ground.claim = claim;
+    // sorprese: "!?" per un attimo quando ne arriva una forte; nuvoletta grigia se insiste due volte di fila
+    const last = new Map(), run = new Map();
+    for (const x of g.surprises || []) { last.set(x.agent, x); run.set(x.agent, x.reaction === 'insists' ? (run.get(x.agent) || 0) + 1 : 0); }
+    const puzzled = new Set();
+    for (const [id, x] of last) {
+      const recent = replay || g.now - x.t < 30000;
+      if (x.value >= 0.7 && recent && x.t > (ground.seen.get(id) || 0)) ground.bang.set(id, performance.now() + 4000);
+      ground.seen.set(id, x.t);
+      if ((run.get(id) || 0) >= 2 && (replay || g.now - x.t < 600000)) puzzled.add(id);
+    }
+    ground.puzzled = puzzled;
+  } catch {} finally { ground.busy = false; }
+}
+setInterval(loadGrounding, 3000);
+const elder = { sid: null, t: 0, busy: false, hints: [], back: new Map(), last: new Map() };
+async function loadHints() {
+  const s = viewSid && !isSpecial(viewSid) ? sessionById(viewSid) : null;
+  if (!s || elder.busy || !settingOn('elderEnabled') || (elder.sid === s.id && Date.now() - elder.t < 5000)) return;
+  elder.busy = true;
+  try {
+    const r = await (await fetch('/api/bottega/hints?' + new URLSearchParams({ sid: s.id }))).json();
+    elder.sid = s.id; elder.t = Date.now(); elder.hints = (r && r.ok && r.hints) || [];
+  } catch {} finally { elder.busy = false; }
+}
+setInterval(loadHints, 3000);
+const groundFor = c => (c.npc || c.sid !== ground.sid ? null : { stale: ground.stale.has(c.id), claim: ground.claim.get(c.id) || null, bang: ground.bang.get(c.id) || 0, puzzled: ground.puzzled.has(c.id) });
+
 async function loadCosts() { if (Date.now() - costsT < 60000 && costsData) return; costsT = Date.now(); try { costsData = await (await fetch('/api/stats/costs?days=14')).json(); } catch {} }
 async function loadHonors() { if (Date.now() - honorsT < 60000 && honorsData) return; honorsT = Date.now(); try { honorsData = await (await fetch('/api/stats/honors')).json(); } catch {} }
 let tabSig = '';
 async function renderBoardTab() {
-  if (boardTab === 'costs') await loadCosts(); else await loadHonors();
-  const html = boardTab === 'costs' ? costsHtml() : honorsHtml();
+  if (boardTab === 'costs') await loadCosts(); else if (boardTab === 'bottega') await loadBooks(); else await loadHonors();
+  const html = boardTab === 'costs' ? costsHtml() : boardTab === 'bottega' ? booksHtml() : honorsHtml();
   if (html === tabSig) return;
   tabSig = html;
   $('#board').innerHTML = boardTabs() + html;
   bindBoardTabs();
+  for (const r of $('#board').querySelectorAll('tr[data-book]')) r.onclick = () => window.openBottega && openBottega(null, null, { key: r.dataset.book });
+}
+let booksData = null, booksT = 0;
+async function loadBooks() { if (Date.now() - booksT < 15000 && booksData) return; booksT = Date.now(); try { booksData = (await (await fetch('/api/bottega/list')).json()).books || []; } catch {} }
+function booksHtml() {
+  const d = booksData || [];
+  return `<h2>${tr('LIBRO DELLA BOTTEGA')} <span>${tr('la memoria di ogni progetto, dedotta dalle sessioni')}</span></h2>` +
+    (d.length ? `<table><thead><tr><th>${tr('PROGETTO')}</th><th>${tr('LEZIONI')}</th><th>${tr('OSSERVAZIONI')}</th><th>${tr('ULTIMO CASO')}</th></tr></thead><tbody>${d.map(b => `<tr data-book="${esc(b.key)}" class="click"><td class="proj">${esc(b.name)}</td><td class="num">${b.strong}</td><td class="num">${b.lessons - b.strong}</td><td>${esc(new Date(b.last).toLocaleDateString(AO_I18N.locale || 'it-IT'))}</td></tr>`).join('')}</tbody></table>`
+      : `<p>${tr('Ancora nessun libro: le lezioni nascono mentre l\'ufficio segue le sessioni, oppure dal pulsante «Impara dall\'archivio» nel libro di un piano.')}</p>`) +
+    `<div class="foot">${tr('Le lezioni sono deduzioni dai fatti, non regole certe. Restano in .platypus/bottega.')}</div>`;
 }
 function costsHtml() {
   const d = costsData || [];
@@ -1122,7 +1181,7 @@ function updateFloorLabels() {
       `<em>${tr('{n} token', { n: tokText((s.tokens || {}).total) })}</em></div>` +
       (alertsOf(s).length ? `<ul class="alerts">${alertsOf(s).slice(0, 4).map(a => `<li class="lv-${a.level}">${esc(a.text)}</li>`).join('')}</ul>` : '') +
       `<div class="t">${esc(s.cwd || '')}</div>` +
-      (!s._replay && !s.demo ? '<div class="btns"><button data-do="focus" title="' + esc(tr('Porta in primo piano il terminale o la finestra di questa sessione')) + '">' + tr('FINESTRA') + '</button><button data-do="folder">' + tr('CARTELLA') + '</button></div>' : ''));
+      (!s._replay ? '<div class="btns">' + (!s.demo ? '<button data-do="focus" title="' + esc(tr('Porta in primo piano il terminale o la finestra di questa sessione')) + '">' + tr('FINESTRA') + '</button><button data-do="folder">' + tr('CARTELLA') + '</button>' : '') + '<button data-do="book" title="' + esc(tr('Le lezioni di questo progetto, dedotte dalle sessioni')) + '">' + tr('LIBRO') + '</button></div>' : ''));
     for (const btn of b.querySelectorAll('button[data-do]')) btn.onclick = () => sessionAction(btn.dataset.do, s.id);
     b.style.pointerEvents = 'auto';
     placeLabel(b, bx * scale, (WALL_H + 10) * scale, Math.min(320, avail) * scale);
@@ -1666,11 +1725,18 @@ function makeNpc(kind) {
   const base = { key: 'npc:' + kind, id: 'npc:' + kind, npc: kind, x: ELEV.x, y: ELEV.y, path: [], dir: 'down', moving: false, alpha: 0, phase: 'walk', state: 'enter', until: 0, speech: '', role: 'npc' };
   if (kind === 'pest') return { ...base, look: { skin: '#E8B48A', hair: '#5F3A1E', style: 3, shirt: '#d4a017', pants: C.navy, acc: 'bowtie', accColor: C.red, pattern: 'stripes' }, data: { status: 'idle', kind: 'sub', type: tr('collega'), name: (snap.settings && snap.settings.pestName) || 'Ugo Pignolo', action: '', description: '' } };
   if (kind === 'hr') return { ...base, look: { skin: '#F2C6A0', hair: '#2B1B17', style: 1, shirt: C.white, pants: C.navy, acc: 'badge', accColor: C.plum, pattern: 'vest' }, data: { status: 'idle', kind: 'sub', type: tr('risorse umane'), name: hrName(), action: '', description: '' } };
+  if (kind === 'elder') return { ...base, age: 3, look: { skin: '#E8B48A', hair: '#F2F2F2', style: 0, shirt: '#8B5A2B', pants: '#5F574F', acc: 'none', accColor: '#8B5A2B', pattern: 'vest' }, data: { status: 'idle', kind: 'sub', type: tr('memoria del progetto'), name: tr('Nonno'), action: '', description: '' } };
   if (kind === 'janitor') return { ...base, look: { skin: '#C68A5E', hair: '#C2C3C7', style: 0, shirt: '#2c6e49', pants: '#1f3d2b', acc: 'cap', accColor: '#2c6e49', pattern: 'plain' }, data: { status: 'idle', kind: 'sub', type: tr('pulizie'), name: tr('Pulizie'), action: '', description: '' } };
   // gatto
   return { ...base, x: 0, y: 0, alpha: 1, state: 'nap', place: null };
 }
 
+// il Libro della bottega si apre su quella lezione (la vista del libro è in C3: finché non c'è, la lezione arriva in un avviso)
+function openElderBook(n) {
+  if (!n.hint) return;
+  if (window.openBottega && floor) return openBottega(floor.s.id, n.hint.lessonId);
+  toast(n.hint.text, true);
+}
 function hrName() { return (snap.settings && snap.settings.hrName) || 'Dott.ssa Ornella Rigore'; }
 function dropNpc(n) { if (n && n.el) { n.el.remove(); n.el = null; } npcs = npcs.filter(x => x !== n); }
 function resetNpcs() { for (const n of npcs) if (n.el) n.el.remove(); npcs = []; npcT0 = performance.now(); }
@@ -1767,12 +1833,36 @@ function updateNpcs(dt, t) {
     }
   }
   if (hr && hr.fading) { hr.alpha -= dt * 2.5; if (hr.alpha <= 0) { dropNpc(hr); updateNpcs.hrBack = t + 4000; } }
+  // il Nonno: quando l'azione in corso di un agente corrisponde a una lezione forte del Libro della bottega
+  let gp = npcs.find(n => n.npc === 'elder');
+  if (!settingOn('elderEnabled')) { if (gp) { dropNpc(gp); gp = null; } }
+  else if (!gp && floor && elder.sid === floor.s.id && t > (elder.back.get(floor.s.id) || 0)) {
+    const sid = floor.s.id;
+    // mai sullo stesso agente due volte di fila per la stessa lezione
+    const h = elder.hints.find(x => { const c = chars.get(x.agent); return c && c.phase === 'seated' && !c.errand && deskFor(c.id) && elder.last.get(sid) !== x.agent + '|' + x.lessonId; });
+    if (h) {
+      gp = makeNpc('elder'); gp.hint = h; gp.victim = h.agent; gp.place = { kind: 'elevator' }; gp.state = 'go'; npcs.push(gp);
+      openElevator(); npcGo(gp, besidePlace(deskFor(h.agent)));
+      elder.back.set(sid, t + 180000); elder.last.set(sid, h.agent + '|' + h.lessonId);
+    }
+  }
+  if (gp && !gp.path.length) {
+    const v = chars.get(gp.victim);
+    const there = v && v.phase === 'seated' && deskFor(v.id);
+    if (gp.state === 'go') {
+      if (!there) { gp.state = 'exit'; npcGo(gp, { kind: 'elevator' }); }
+      else { gp.state = 'tell'; gp.until = t + 9000; gp.dir = 'right'; gp.speech = gp.hint.text; gp.last = ''; }
+    } else if (gp.state === 'tell' && (!there || t > gp.until)) {
+      gp.speech = ''; gp.last = ''; gp.state = 'exit'; npcGo(gp, { kind: 'elevator' });
+    } else if (gp.state === 'exit') gp.fading = true;
+  }
+  if (gp && gp.fading) { gp.alpha -= dt * 2.5; if (gp.alpha <= 0) dropNpc(gp); }
   // movimento
   for (const n of npcs) {
     if (n.alpha < 1 && !n.fading) n.alpha = Math.min(1, n.alpha + dt * 3);
     if (!n.path.length) { n.moving = false; continue; }
     const p = n.path[0];
-    const dx = p.x - n.x, dy = p.y - n.y, d = Math.hypot(dx, dy), step = (n.npc === 'cat' ? 40 : SPEED * 0.9) * dt;
+    const dx = p.x - n.x, dy = p.y - n.y, d = Math.hypot(dx, dy), step = (n.npc === 'cat' ? 40 : SPEED * (n.age >= 3 ? 0.6 : 0.9)) * dt;
     n.moving = true;
     if (Math.abs(dx) > Math.abs(dy)) n.dir = dx > 0 ? 'right' : 'left'; else n.dir = dy > 0 ? 'down' : 'up';
     if (d <= step) { n.x = p.x; n.y = p.y; n.path.shift(); } else { n.x += dx / d * step; n.y += dy / d * step; }
@@ -2444,6 +2534,7 @@ function drawChar(c, t) {
     R(x - 7, by - 1 + sw, 2, 2, L.skin); R(x + 5, by - 1 - sw, 2, 2, L.skin);
     if (c.phase === 'break') { R(x + 5, by - 4, 3, 3, C.white); if (((t / 500) | 0) % 2) R(x + 6, by - 7, 1, 2, '#ffffff88'); }
     if (c.npc === 'pest') { R(x + 5, by - 4, 3, 3, C.white); R(x + 6, by - 3, 1, 1, C.red); } // la sua tazza
+    if (c.npc === 'elder') { R(x + 5, by - 6, 4, 6, '#7E2553'); R(x + 5, by - 6, 4, 1, C.yellow); R(x + 8, by - 5, 1, 4, C.white); } // il Libro della bottega
     if (c.npc === 'hr') { R(x + 5, by - 6, 4, 6, C.brown); R(x + 6, by - 5, 2, 4, C.white); R(x + 6, by - 7, 2, 1, C.lgrey); } // la cartellina dei richiami
   } else {
     R(x - 7, by - 7, 2, 4, L.shirt); R(x + 5, by - 7, 2, 4, L.shirt);
@@ -2494,6 +2585,23 @@ function drawChar(c, t) {
   }
   if (c.alert && a.status !== 'waiting' && ((t / 600) | 0) % 2) { R(ix, iy - 2, 5, 9, C.orange); R(ix + 1, iy - 1, 3, 1, C.black); R(ix + 3, iy, 1, 2, C.black); R(ix + 2, iy + 2, 1, 1, C.black); R(ix + 2, iy + 5, 1, 1, C.black); }
   if (a.status === 'done' || a.finished) { R(ix, iy, 1, 1, C.green); R(ix + 1, iy + 1, 1, 1, C.green); R(ix + 2, iy, 1, 1, C.green); R(ix + 3, iy - 1, 1, 1, C.green); R(ix + 4, iy - 2, 1, 1, C.green); }
+  const gr = groundFor(c);
+  if (gr && gr.puzzled) { // nuvoletta grigia sopra la testa, con il punto di domanda: insiste sullo stesso errore
+    const cx = x - 4, cy = hy - 17 + (((t / 700) | 0) % 2);
+    R(cx + 1, cy, 7, 7, C.lgrey); R(cx, cy + 1, 9, 5, C.lgrey);
+    R(cx + 2, cy + 8, 2, 1, C.lgrey); R(cx + 4, cy + 10, 1, 1, C.lgrey);
+    pixText('?', cx + 3, cy + 1, C.dgrey);
+  }
+  if (gr && gr.bang > t) { // "!?": il mondo gli ha appena dato torto, e non se l'aspettava
+    const j = Math.round(Math.sin(t / 45));
+    R(ix - 2 + j, iy - 13, 11, 8, C.black);
+    pixText('!?', ix - 1 + j, iy - 12, C.yellow);
+  }
+  if (gr && gr.stale) { // orologio: ha in testa un file che nel frattempo è cambiato (ricordo scaduto)
+    const ox = x - 11, oy = hy - 7;
+    R(ox + 1, oy + 1, 3, 3, C.black); R(ox + 1, oy, 3, 1, C.orange); R(ox, oy + 1, 1, 3, C.orange); R(ox + 4, oy + 1, 1, 3, C.orange); R(ox + 1, oy + 4, 3, 1, C.orange);
+    R(ox + 2, oy + 1, 1, 2, C.white); R(ox + 3, oy + 2, 1, 1, C.white);
+  }
   ctx.globalAlpha = 1;
 }
 
@@ -2504,7 +2612,7 @@ function wantsBalloon(c) {
   const a = c.data || {};
   if (c.npc) return !!c.speech || hoverId === c.id;
   if (c.phase === 'leave' || c.fadeAway || c.fadeOut) return false;
-  return allBalloons || c.role === 'boss' || c.role === 'manager' || a.status === 'waiting' || focusId === c.id || hoverId === c.id || c.phase === 'linger' || !!c.alert || !!c.errand;
+  return allBalloons || c.role === 'boss' || c.role === 'manager' || a.status === 'waiting' || focusId === c.id || hoverId === c.id || c.phase === 'linger' || !!c.alert || !!c.errand || !!(groundFor(c) || {}).claim;
 }
 
 function updateBalloon(c) {
@@ -2518,6 +2626,7 @@ function updateBalloon(c) {
       e.stopPropagation();
       const b = e.target.closest('button[data-d]');
       if (b) { const ap = approvalFor(c.sid, c.id); if (ap) answerApproval(ap, b.dataset.d); return; }
+      if (c.npc === 'elder') return openElderBook(c);
       showInfo(c.sid, c.id);
     });
     overlay.appendChild(c.el);
@@ -2528,19 +2637,22 @@ function updateBalloon(c) {
   if (c.phase === 'break') action = tr('Pausa caffè: tocca a te!');
   if (c.errand) action = ERRAND_TEXT[c.errand.type] + (c.phase === 'errand' ? '' : '…');
   if (c.alert && status !== 'waiting') action = c.alert.text.replace(/^[A-Z0-9-]+ /, '').replace(/^: /, '');
-  if (c.npc) action = c.speech || (c.npc === 'pest' ? tr('Passavo di qui…') : c.npc === 'hr' ? tr('Ha un richiamo da consegnare') : c.npc === 'relax' ? c.doing : tr('Pulizie in corso'));
+  if (c.npc) action = c.speech || (c.npc === 'pest' ? tr('Passavo di qui…') : c.npc === 'hr' ? tr('Ha un richiamo da consegnare') : c.npc === 'elder' ? tr('Il Nonno: la memoria del progetto') : c.npc === 'relax' ? c.doing : tr('Pulizie in corso'));
   if (c.cheerUntil > performance.now() && c.role === 'boss' && floor && floor.s.party) action = tr('Evviva! {text}', { text: floor.s.party.text });
   const ap = c.npc ? null : approvalFor(c.sid, c.id);
-  const sig = status + '|' + action + '|' + a.description + '|' + a.type + '|' + a.seq + '|' + (focusId === c.id) + '|' + !!c.alert + '|' + (c.errand ? c.errand.type : '') + '|' + (ap ? ap.id : '');
+  const gc = (groundFor(c) || {}).claim;
+  const sig = status + '|' + action + '|' + a.description + '|' + a.type + '|' + a.seq + '|' + (focusId === c.id) + '|' + !!c.alert + '|' + (c.errand ? c.errand.type : '') + '|' + (ap ? ap.id : '') + '|' + (gc ? gc.status + gc.t : '');
   if (sig !== c.last) {
     c.last = sig;
-    c.el.className = 'balloon st-' + (c.npc ? 'npc' : c.errand && c.errand.type === 'rage' ? 'rage' : c.alert && status !== 'waiting' ? 'alert' : status) + (focusId === c.id ? ' focus' : '') + (a.kind === 'main' || !a.description ? ' compact' : '') + (ap ? ' asking' : '');
+    c.el.className = 'balloon st-' + (c.npc ? 'npc' : c.errand && c.errand.type === 'rage' ? 'rage' : c.alert && status !== 'waiting' ? 'alert' : status) + (focusId === c.id ? ' focus' : '') + (a.kind === 'main' || !a.description ? ' compact' : '') + (ap ? ' asking' : '') + (gc ? ' unground' : '');
     c.el.innerHTML =
       '<span class="nm">' + esc(agentName(a)) + (c.role === 'manager' ? ' · ' + tr('CAPO REPARTO') : '') + '</span>' +
       (a.kind === 'sub' && a.description ? '<span class="task">' + esc(a.description) + '</span>' : '') +
       '<span class="act"><i class="ico">' + esc(ICONS[status] || '') + '</i>' + esc(action) + '</span>' +
+      // affermazione dell'ultima risposta senza un fatto che la provi (o smentita dall'ultimo esito)
+      (gc ? '<span class="ung">' + esc(gc.status === 'contradicted' ? tr('smentita: «{text}»', { text: gc.text }) : tr('senza prove: «{text}»', { text: gc.text })) + '</span>' : '') +
       (ap ? askButtons(ap) : '');
-    c.el.title = agentName(a) + (a.description ? ' — ' + a.description : '') + '\n' + action;
+    c.el.title = agentName(a) + (a.description ? ' — ' + a.description : '') + '\n' + action + (gc ? '\n' + (gc.status === 'contradicted' ? tr('smentita: «{text}»', { text: gc.text }) : tr('senza prove: «{text}»', { text: gc.text })) : '');
   }
   const walking = c.moving;
   c.el.classList.toggle('walking', walking);
@@ -2730,6 +2842,8 @@ canvas.addEventListener('click', e => {
   let best = null;
   for (const c of chars.values()) if (Math.abs(wx - c.x) < 8 && wy < c.y + 2 && wy > c.y - 26) best = c;
   if (best) { showInfo(best.sid, best.id); return; }
+  const gpc = npcs.find(n => n.npc === 'elder' && Math.abs(wx - n.x) < 8 && wy < n.y + 2 && wy > n.y - 26);
+  if (gpc) return openElderBook(gpc);
   const cat = npcs.find(n => n.npc === 'cat');
   if (cat) {
     const cx = cat.phase === 'keys' && deskFor(cat.target) ? deskFor(cat.target).x + 12 : cat.x, cy = cat.phase === 'keys' && deskFor(cat.target) ? deskFor(cat.target).top + 24 : cat.y;
@@ -2966,6 +3080,9 @@ const SETTINGS_CHECKS = [
   ['partyEnabled', tr('Feste per commit, PR e test verdi')],
   ['nightAuto', tr('Luci basse e pulizie dopo le 20')],
   ['outfits', tr('Vestiti per feste, stagioni e meteo')],
+  ['groundingAlerts', tr('Avvisi di ancoraggio: modifiche alla cieca e affermazioni smentite')],
+  ['elderEnabled', tr('Il Nonno racconta le lezioni del Libro della bottega')],
+  ['bottegaLearn', tr('Il Libro della bottega impara dalle sessioni (dal vivo e dall\'archivio)')],
 ];
 const SETTINGS_TEXTS = [
   ['pestName', tr('Nome del collega fastidioso'), 40, tr('Il nome del collega fastidioso')],
@@ -3066,7 +3183,7 @@ window.addEventListener('keydown', e => {
   else if (k === 'escape') {
     // dall'area relax si torna in atrio, se non c'è niente di aperto da chiudere
     if (viewSid === 'relax' && $('#help').hidden && $('#settings').hidden && $('#search').hidden && !(window.worldMapOpen && worldMapOpen())) goTo(null);
-    if (window.closeWorldMap) closeWorldMap(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; $('#settings').hidden = true; roomListKey = null;
+    if (window.closeWorldMap) closeWorldMap(); if (window.closeBottega) closeBottega(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; $('#settings').hidden = true; roomListKey = null;
   }
 });
 window.addEventListener('resize', () => { if (snap) reconcile(); });

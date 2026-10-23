@@ -4,6 +4,27 @@ Platypus releases (up to 2.7 it was called Agent Office), newest first.
 
 *Versione italiana: [CHANGELOG.it.md](CHANGELOG.it.md).*
 
+## 2.9: map and territory, surprise and causes, the Workshop book
+
+Platypus can't look inside the model's head, but it sees both the agent's map (what it read, said and did) and the territory (the disk, the outcomes of commands). This version measures the distance between the two. Everything is rebuilt from facts, stays on the computer, and uncertain verdicts are shown as such.
+
+- **Map versus territory** (new view **MAP AND TERRITORY** in the map of reality):
+  - **stale memories**: a file the agent read has changed since (by another agent, or outside the session, or it was deleted) and it hasn't read it again; **blind edits** when it edits it anyway, or Claude Code stops it;
+  - **invented paths**: files it tries to open, that commands can't find or that its replies mention, and that don't exist; "created later" when they turn out to be an intention;
+  - **claims** in its replies ("tests pass", "verified", "I fixed X", "I created X", "done", in Italian and English) checked against its own steps in the same turn: grounded, no evidence, or contradicted; the **grounding index** is the share of grounded claims;
+  - in the office a clock next to the head of whoever has a stale memory, and a dashed balloon "no evidence: «…»"; optional **grounding alerts** in OPT.
+- **Surprise and causes** (new view **SURPRISE AND CAUSES**):
+  - every failure gets a **surprise** from 0 to 1, from the kind of failure (tests, commands, missing files, permissions, timeouts, syntax, failed edits, recognized for Jest, Vitest, pytest, Go, cargo, npm, tsc, Node, Python, PowerShell) and its history: more if it used to work, less on a first attempt or for a test just written;
+  - what the agent does next: **corrects itself, insists or stops**, with the time to recover;
+  - whether it **follows the trail**: the files and lines cited by the error against its first edits, and the **causal chain** error → cited file → fix → confirmation;
+  - a **seismograph** with one row per agent; in the office a shaking "!?" for a strong surprise and a grey cloud for whoever insists.
+- **Workshop book and Grandpa**:
+  - every project gets a **book** of lessons deduced from its sessions: flaky commands, fragile files, known fixes, loop traps, contended files, invented paths, slow steps. The weight of a lesson grows with the cases and the sessions and halves every 30 days; a single case is only an observation;
+  - the book learns live and, with **Learn from the archive**, from past sessions; it lives in `~/.platypus/bottega` and learning can be switched off in OPT;
+  - **Grandpa**, an old man with a cardigan and the book under his arm, walks to the desk of an agent about to repeat a known mistake and tells the lesson, at most once every 3 minutes per floor;
+  - the **Book** (BOOK on the floor's notice board, WORKSHOP in the lobby, or a click on Grandpa): lessons with evidence, pin/ignore/forget, replay from a piece of evidence, and **Propose for CLAUDE.md**: a short section for the project's `CLAUDE.md`, copied or written between Platypus's markers with a backup, only after you confirm (never for the demo, Cowork or read-only folders).
+- **Demo**: floor 1 acts out all of it within the first minute and a half, with a fake book that never reaches the disk.
+
 ## 2.8: it's called Platypus
 
 - **New name**: Agent Office becomes **Platypus**, in the app, the menus, the shortcuts and the docs.

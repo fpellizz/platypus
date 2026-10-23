@@ -220,4 +220,4 @@ class Replay extends EventEmitter {
   stop() { clearInterval(this.timer); this.state.stop(); this.removeAllListeners(); }
 }
 
-module.exports = { listArchive, findSessionFile, Replay };
+module.exports = { listArchive, findSessionFile, loadEvents, Replay };

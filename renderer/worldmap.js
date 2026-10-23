@@ -37,12 +37,14 @@
 
   const W = { open: false, sid: null, aid: 'main', replay: false, data: null, T: null, playing: false, yaw: -0.6, pitch: 0.42, drag: null,
     axes: ['work', 'novelty', 'friction'], hover: null, tiles: [], timer: null, fetching: false, layoutSig: '', layout: null, lastFrame: 0,
-    view: 'map', mind: null, mhover: null };
+    view: 'map', mind: null, mhover: null, ground: null, groundSeq: 0 };
+  const VIEWS = ['map', 'mind', 'ground', 'surp'];
+  const usesGround = () => W.view === 'ground' || W.view === 'surp'; // le due viste leggono /api/grounding
 
   function el() { return $('#worldmap'); }
 
   window.openWorldMap = function (sid, aid, replay) {
-    W.open = true; W.sid = sid; W.aid = aid || 'main'; W.replay = !!replay; W.T = null; W.playing = false; W.data = null; W.mind = null; W.layoutSig = '';
+    W.open = true; W.sid = sid; W.aid = aid || 'main'; W.replay = !!replay; W.T = null; W.playing = false; W.data = null; W.mind = null; W.ground = null; W.layoutSig = '';
     build();
     el().hidden = false;
     refresh();
@@ -64,7 +66,7 @@
       <div class="wm-head">
         <h3>${esc(tr('MAPPA DELLA REALTÀ'))}</h3>
         <select class="wm-agent">${opts.map(([k, l]) => `<option value="${esc(k)}" ${k === W.aid ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
-        <span class="wm-views"><button data-v="map">${esc(tr('TERRITORIO E TRAIETTORIA'))}</button><button data-v="mind">${esc(tr('BOLLA E STELLA POLARE'))}</button></span>
+        <span class="wm-views">${[['map', tr('TERRITORIO E TRAIETTORIA')], ['mind', tr('BOLLA E STELLA POLARE')], ['ground', tr('MAPPA E TERRITORIO')], ['surp', tr('SORPRESA E CAUSE')]].map(([v, l]) => `<button data-v="${v}" title="${esc(l)}">${esc(l)}</button>`).join('')}</span>
         <span class="wm-phase"></span>
         <span class="wm-stats"></span>
         <button class="wm-help-btn" title="${esc(tr('Come si legge'))}">?</button>
@@ -85,6 +87,14 @@
           <div class="wm-comp"><div class="wm-cap">${esc(tr('DI COSA È FATTO IL CONTESTO'))}</div><div class="wm-compbody"></div></div>
         </div>
       </div>
+      <div class="wm-body wm-ground">
+        <div class="wm-gterr"><div class="wm-cap">${esc(tr('TERRITORIO'))} <span class="dim">${esc(tr('con i fantasmi e i ricordi scaduti'))}</span></div><canvas></canvas><div class="wm-tip" hidden></div></div>
+        <div class="wm-gside"><div class="wm-cap">${esc(tr('MAPPA CONTRO TERRITORIO'))} <span class="dim">${esc(tr('quello che dice e sa, contro quello che c\'è'))}</span></div><div class="wm-gbody"></div></div>
+      </div>
+      <div class="wm-body wm-surp">
+        <div class="wm-seis"><div class="wm-cap">${esc(tr('SISMOGRAFO'))} <span class="dim">${esc(tr('le smentite del mondo, alte quanto la sorpresa'))}</span></div><canvas></canvas><div class="wm-tip" hidden></div></div>
+        <div class="wm-gside"><div class="wm-cap">${esc(tr('CAUSE'))} <span class="dim">${esc(tr('errore → file citato → modifica → conferma'))}</span></div><div class="wm-gbody wm-sbody"></div></div>
+      </div>
       <div class="wm-time"><button class="wm-play">▶</button><canvas class="wm-band"></canvas><input type="range" min="0" max="1000" value="1000"><button class="wm-live">${esc(tr('IN DIRETTA'))}</button><span class="wm-clock"></span></div>
       <div class="wm-legend" hidden>
         <p><b>${esc(tr('Territorio'))}</b>: ${esc(tr('ogni quadratino è un file o un luogo che l\'agente può incontrare. La nebbia è ciò che non ha mai visto; blu scuro: l\'ha visto citato ma non l\'ha aperto (la frontiera); azzurro: l\'ha letto, più chiaro se ci è tornato spesso; giallo: l\'ha modificato; verde: l\'ha creato. La scia bianca unisce gli ultimi posti visitati, il quadrato che lampeggia è dove si trova adesso.'))}</p>
@@ -92,6 +102,8 @@
         <p><b>${esc(tr('Le 7 dimensioni'))}</b>: ${DIM_LABELS.map((l, i) => `<i>${esc(l)}</i> ${esc(DIM_HELP[i])}`).join(' · ')}. ${esc(tr('Sono calcolate sulle ultime 8 azioni.'))}</p>
         <p><b>${esc(tr('Bolla del contesto'))}</b>: ${esc(tr('ogni punto è un pezzo di quello che l\'agente ha davanti: il compito, i file letti, i risultati dei comandi e delle ricerche, le sue risposte. Pezzi che parlano delle stesse cose stanno vicini. Più il punto è grande, più token occupa. La bolla si gonfia man mano che il contesto si riempie (verde, poi giallo, poi rosso); quando Claude lo compatta, la bolla si sgonfia e i pezzi dimenticati escono fuori come polvere grigia, mentre il riassunto resta dentro.'))}</p>
         <p><b>${esc(tr('Stella polare'))}</b>: ${esc(tr('la stella è il compito che gli è stato dato. Il grafico dice quanto ogni azione parla delle stesse cose del compito, rispetto alle sue prime azioni: se resta bassa a lungo l\'agente sta andando alla deriva. Una nuova richiesta sposta la stella.'))}</p>
+        <p><b>${esc(tr('Mappa e territorio'))}</b>: ${esc(tr('confronta quello che l\'agente sa e dice con quello che c\'è davvero. Contorno arancione con l\'orologio: un file che ha letto ed è poi cambiato (da un altro agente o fuori dalla sessione) senza che lui lo rileggesse, un ricordo scaduto. Caselle viola tratteggiate con il punto di domanda: file che ha cercato, aperto o citato e che non esistono, i percorsi inventati; più chiare se poi qualcuno li ha creati (era un\'intenzione). A destra, le sue affermazioni («i test passano», «ho corretto X»…) confrontate con quello che ha fatto nello stesso turno: ancorata se c\'è un fatto che la prova, senza prove se non c\'è, smentita se l\'ultimo esito è un fallimento. L\'indice di ancoraggio è la quota di affermazioni ancorate. Clic su una voce per andare a quel momento.'))}</p>
+        <p><b>${esc(tr('Sorpresa e cause'))}</b>: ${esc(tr('ogni punta del sismografo è un fallimento (un test rosso, un comando che non va, un file che non c\'è…), alta quanto era inatteso: di più se prima funzionava, di meno se era il primo tentativo o un test appena scritto. Il colore dice cosa ha fatto dopo: verde si corregge, rosso insiste con lo stesso comando, grigio si ferma. A destra le catene: l\'errore, i file che cita, la prima modifica (verde se tocca un file citato, arancione se cerca altrove) e la conferma, quando lo stesso comando torna a riuscire. In ufficio, «!?» sopra la testa per una sorpresa forte e una nuvoletta grigia per chi insiste.'))}</p>
         <p class="dim">${esc(tr('Motore lessicale sperimentale: confronta le parole importanti (anche dentro i nomi dei file e del codice), non il significato profondo. Funziona tutto sul computer, senza scaricare modelli.'))}</p>
         <p class="dim">${esc(tr('La mappa è ricostruita da quello che l\'agente fa (file, comandi, ricerche, esiti), non da quello che pensa: i suoi pensieri non sono visibili.'))}</p>
       </div>`;
@@ -118,17 +130,31 @@
     };
     bub.onpointerup = () => { W.drag = null; };
     bub.onmouseleave = () => { W.mhover = null; };
-    const terr = e.querySelector('.wm-terr canvas');
-    terr.onmousemove = ev => { const r = terr.getBoundingClientRect(); W.hover = { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
-    terr.onmouseleave = () => { W.hover = null; };
+    for (const terr of e.querySelectorAll('.wm-terr canvas, .wm-gterr canvas')) {
+      terr.onmousemove = ev => { const r = terr.getBoundingClientRect(); W.hover = { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
+      terr.onmouseleave = () => { W.hover = null; };
+    }
+    // un elemento dell'elenco porta al suo momento sulla linea del tempo
+    for (const gb of e.querySelectorAll('.wm-gbody')) gb.onclick = ev => {
+      const it = ev.target.closest('[data-t]');
+      if (!it) return;
+      W.playing = false; W.T = Number(it.dataset.t);
+    };
+    const seis = e.querySelector('.wm-seis canvas');
+    seis.onmousemove = ev => { const r = seis.getBoundingClientRect(); W.shover = { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
+    seis.onmouseleave = () => { W.shover = null; };
+    seis.onclick = () => { const sp = W.spikeHover; if (sp) { W.playing = false; W.T = sp.t; } };
   }
 
   function setView(v) {
-    W.view = v === 'mind' ? 'mind' : 'map';
+    W.view = VIEWS.includes(v) ? v : 'map';
     const e = el();
     e.classList.toggle('view-mind', W.view === 'mind');
+    e.classList.toggle('view-ground', W.view === 'ground');
+    e.classList.toggle('view-surp', W.view === 'surp');
     for (const b of e.querySelectorAll('.wm-views button')) b.classList.toggle('on', b.dataset.v === W.view);
-    if (W.view === 'mind' && !W.mind) refresh();
+    W.layoutSig = '';
+    if ((W.view === 'mind' && !W.mind) || (usesGround() && !W.ground)) refresh();
   }
   async function refresh() {
     if (W.fetching) return;
@@ -142,6 +168,10 @@
       if (W.view === 'mind') {
         const m = await (await fetch('/api/agentmind?' + q)).json();
         if (m && m.ok) W.mind = m;
+      }
+      if (usesGround()) {
+        const g = await (await fetch('/api/grounding?' + q)).json();
+        if (g && g.ok) { W.ground = g; W.groundSeq++; }
       }
     } catch {} finally { W.fetching = false; }
   }
@@ -167,6 +197,8 @@
     const known = new Map(d.nodes.map(n => [n[0], n]));
     const keys = new Set(d.tree && d.tree.available ? d.tree.files.map(f => f[0]) : []);
     for (const k of known.keys()) keys.add(k);
+    // nella vista "mappa e territorio" anche i file citati nelle risposte che non esistono hanno una casella
+    if (W.view === 'ground' && W.ground) for (const g of W.ground.ghosts) keys.add(g.key);
     for (const key of keys) {
       const g = groupOf(key);
       let parts;
@@ -243,13 +275,14 @@
     return { ctx, w, h };
   }
 
-  function drawTerritory(t) {
-    const cv = el().querySelector('.wm-terr canvas');
+  function drawTerritory(t, box = '.wm-terr') {
+    const cv = el().querySelector(box + ' canvas');
     const { ctx, w, h } = fitCanvas(cv);
     ctx.fillStyle = '#07060c'; ctx.fillRect(0, 0, w, h);
     const d = W.data;
     if (!d) { ctx.fillStyle = '#83769C'; ctx.font = '18px VT, monospace'; ctx.fillText(tr('Carico la mappa…'), 12, 24); return; }
-    const sig = w + 'x' + h + '|' + d.nodes.length + '|' + (d.tree ? d.tree.files.length : 0) + '|' + W.aid;
+    const g = box === '.wm-gterr' ? W.ground : null;
+    const sig = w + 'x' + h + '|' + d.nodes.length + '|' + (d.tree ? d.tree.files.length : 0) + '|' + W.aid + '|' + (g ? g.ghosts.length : -1);
     if (sig !== W.layoutSig) { W.layout = layoutTree(buildHierarchy(), w, h); W.layoutSig = sig; }
     const { tiles, boxes } = W.layout;
     const T = nowT();
@@ -295,16 +328,41 @@
       const cur = pts[pts.length - 1];
       if (cur && ((t / 300) | 0) % 2) { ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(cur.x - 1, cur.y - 1, cur.w + 2, cur.h + 2); }
     });
+    // mappa contro territorio: fantasmi (viola, tratteggiati, "?") e ricordi scaduti (arancione, orologio)
+    const ghostAt = new Map(), staleAt = new Map();
+    if (g) {
+      for (const x of g.ghosts) if (x.t <= T && !ghostAt.has(x.key)) ghostAt.set(x.key, x);
+      for (const x of g.stale) if ((x.changedAt || x.readAt) <= T && !staleAt.has(x.key)) staleAt.set(x.key, x);
+      ctx.save();
+      for (const [key, x] of ghostAt) {
+        const tl = byKey.get(key); if (!tl) continue;
+        ctx.fillStyle = x.createdLater ? 'rgba(131,118,156,0.35)' : 'rgba(126,37,83,0.75)';
+        ctx.fillRect(tl.x + 0.5, tl.y + 0.5, Math.max(0.5, tl.w - 1), Math.max(0.5, tl.h - 1));
+        ctx.setLineDash([3, 2]); ctx.strokeStyle = '#ff77a8'; ctx.lineWidth = 1.5;
+        ctx.strokeRect(tl.x + 1, tl.y + 1, Math.max(1, tl.w - 2), Math.max(1, tl.h - 2));
+        ctx.setLineDash([]);
+        if (tl.w > 9 && tl.h > 9) { ctx.fillStyle = '#ff77a8'; ctx.font = '14px VT, monospace'; ctx.fillText('?', tl.x + tl.w - 8, tl.y + tl.h - 3); }
+      }
+      for (const [key] of staleAt) {
+        const tl = byKey.get(key); if (!tl) continue;
+        ctx.strokeStyle = '#ffa300'; ctx.lineWidth = 2;
+        ctx.strokeRect(tl.x + 1, tl.y + 1, Math.max(1, tl.w - 2), Math.max(1, tl.h - 2));
+        if (tl.w > 10 && tl.h > 10) drawClock(ctx, tl.x + tl.w - 6, tl.y + 6, 4);
+      }
+      ctx.restore();
+    }
     // tooltip
-    const tip = el().querySelector('.wm-tip');
+    const tip = el().querySelector(box + ' .wm-tip');
     let ht = null;
     if (W.hover) for (const tl of tiles) if (W.hover.x >= tl.x && W.hover.x < tl.x + tl.w && W.hover.y >= tl.y && W.hover.y < tl.y + tl.h) { ht = tl; break; }
     if (ht) {
       const n = ht.n, lv = levelAt(n, T);
-      const fmt = x => new Date(x).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
       const what = [tr('mai visto (nebbia)'), tr('visto citato, non aperto'), trn('letto {n} volta', 'letto {n} volte', (n && n[5]) || 1), tr('modificato'), tr('creato')][lv];
-      const when = n ? [n[1] && tr('visto alle {t}', { t: fmt(n[1]) }), n[2] && tr('letto alle {t}', { t: fmt(n[2]) }), n[3] && tr('modificato alle {t}', { t: fmt(n[3]) })].filter(Boolean).join(' · ') : '';
-      const html = `<b>${esc(ht.key.replace(/^(abs|web|cmd|agent|tool):/, ''))}</b><br>${esc(what)}${when ? '<br><span class="dim">' + esc(when) + '</span>' : ''}`;
+      const when = n ? [n[1] && tr('visto alle {t}', { t: hhmm(n[1]) }), n[2] && tr('letto alle {t}', { t: hhmm(n[2]) }), n[3] && tr('modificato alle {t}', { t: hhmm(n[3]) })].filter(Boolean).join(' · ') : '';
+      const gh = ghostAt.get(ht.key), st = staleAt.get(ht.key);
+      const whose = x => (W.aid === 'all' ? x.agentName + ': ' : '');
+      const extra = (gh ? '<br><span class="gh">' + esc(whose(gh) + ghostText(gh)) + '</span>' : '') + (st ? '<br><span class="st">' + esc(whose(st) + staleText(st)) + '</span>' : '');
+      const html = `<b>${esc(ht.key.replace(/^(abs|web|cmd|agent|tool):/, ''))}</b><br>${esc(gh && lv === 0 ? tr('non esiste') : what)}${when ? '<br><span class="dim">' + esc(when) + '</span>' : ''}${extra}`;
       if (tip._h !== html) { tip.innerHTML = html; tip._h = html; }
       tip.hidden = false;
       tip.style.left = Math.min(w - 220, W.hover.x + 12) + 'px';
@@ -316,6 +374,153 @@
       : tr('Progetto non leggibile da qui: si vede solo ciò che l\'agente ha toccato');
     if (stats._t !== txt) { stats.textContent = txt; stats._t = txt; }
   }
+  const hhmm = x => new Date(x).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
+  function drawClock(ctx, x, y, r) {
+    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(x, y, r + 1, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#ffa300'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - r + 1); ctx.moveTo(x, y); ctx.lineTo(x + r - 1.5, y); ctx.stroke();
+  }
+
+  // ---------------------------------------------------------------- mappa contro territorio: testi e pannello
+  const GHOST_SRC = { tool: tr('aperto con uno strumento'), output: tr('cercato da un comando'), reply: tr('citato in una risposta') };
+  const CLAIM_KIND = { tests: tr('test'), verified: tr('verificato'), fixed: tr('corretto'), created: tr('creato'), done: tr('fatto') };
+  const CLAIM_STATUS = { grounded: [tr('ANCORATA'), 'ok'], ungrounded: [tr('SENZA PROVE'), 'mid'], contradicted: [tr('SMENTITA'), 'bad'] };
+  function ghostText(x) {
+    const s = tr('non esiste: {how} alle {t}', { how: GHOST_SRC[x.source] || x.source, t: hhmm(x.t) });
+    return x.createdLater ? s + ' · ' + tr('poi creato: era un\'intenzione') : s;
+  }
+  function staleText(x) {
+    if (x.gone) return tr('letto alle {a}, poi cancellato', { a: hhmm(x.readAt) });
+    if (x.changedBy) return tr('letto alle {a}, cambiato alle {b} da {who}', { a: hhmm(x.readAt), b: hhmm(x.changedAt), who: x.changedBy });
+    return tr('letto alle {a}, cambiato alle {b} fuori dalla sessione (da te o da un altro programma)', { a: hhmm(x.readAt), b: hhmm(x.changedAt || x.mtime) });
+  }
+  function evidenceText(c) {
+    const e = c.evidence;
+    if (!e) return c.kind === 'done' ? tr('nessuna prova richiesta') : tr('nel turno non c\'è un fatto che la confermi');
+    const what = e.target ? e.target.replace(/^(cmd|abs|web|agent|tool):/, '') : e.tool;
+    return (e.err ? tr('ultimo esito: {what} fallito alle {t}', { what, t: hhmm(e.t) }) : tr('prova: {what} alle {t}', { what, t: hhmm(e.t) }));
+  }
+  function drawGroundPanel() {
+    const box = el().querySelector('.wm-gbody');
+    const g = W.ground, T = nowT();
+    const key = W.groundSeq + '|' + (W.T == null ? 'live' : Math.floor(W.T / 1000));
+    if (box._k === key) return;
+    box._k = key;
+    if (!g) { box.innerHTML = `<p class="dim">${esc(tr('Carico la mappa…'))}</p>`; return; }
+    const many = W.aid === 'all';
+    const who = x => (many ? `<span class="ag">${esc(x.agentName)}</span> ` : '');
+    const at = (arr, f) => arr.filter(x => f(x) <= T);
+    const claims = at(g.claims, x => x.t), stale = at(g.stale, x => x.changedAt || x.readAt), ghosts = at(g.ghosts, x => x.t), blind = at(g.blindEdits, x => x.t);
+    const gr = claims.filter(c => c.status === 'grounded').length;
+    const pct = claims.length ? Math.round(100 * gr / claims.length) : null;
+    const sec = (title, n, body) => `<div class="gs"><div class="gt">${esc(title)} <span class="n">${n}</span></div>${body || `<div class="dim">${esc(tr('nessuno'))}</div>`}</div>`;
+    const row = (t, html) => `<div class="gi" data-t="${t}" title="${esc(tr('Vai a questo momento'))}">${html}</div>`;
+    let html = `<div class="gscore"><b class="${pct == null ? '' : pct >= 70 ? 'ok' : pct >= 40 ? 'mid' : 'bad'}">${pct == null ? '—' : pct + '%'}</b>` +
+      `<span>${esc(tr('INDICE DI ANCORAGGIO'))}<br><span class="dim">${claims.length ? esc(trn('{g} affermazione ancorata su {n}', '{g} affermazioni ancorate su {n}', claims.length, { g: gr })) : esc(tr('nessuna affermazione da controllare'))}</span></span></div>`;
+    html += sec(tr('AFFERMAZIONI'), claims.length, claims.slice(0, 60).map(c => {
+      const [lab, cls] = CLAIM_STATUS[c.status] || CLAIM_STATUS.ungrounded;
+      return row(c.t, `<b class="${cls}">${esc(lab)}</b> ${who(c)}<span class="q">«${esc(c.text)}»</span><br><span class="dim">${esc(hhmm(c.t))} · ${esc(CLAIM_KIND[c.kind] || c.kind)} · ${esc(evidenceText(c))}</span>`);
+    }).join(''));
+    html += sec(tr('RICORDI SCADUTI'), stale.length, stale.slice(0, 60).map(x => row(x.changedAt || x.readAt, `<span class="clk">◷</span> ${who(x)}<span class="k">${esc(x.key)}</span><br><span class="dim">${esc(staleText(x))}</span>`)).join(''));
+    html += sec(tr('PERCORSI INVENTATI'), ghosts.length, ghosts.slice(0, 60).map(x => row(x.t, `<span class="gq">?</span> ${who(x)}<span class="k">${esc(x.key)}</span>${x.createdLater ? ` <b class="later">${esc(tr('POI CREATO'))}</b>` : ''}<br><span class="dim">${esc(ghostText(x))}${x.excerpt ? ' · «' + esc(x.excerpt) + '»' : ''}</span>`)).join(''));
+    if (blind.length) html += sec(tr('MODIFICHE ALLA CIECA'), blind.length, blind.slice(0, 30).map(x => row(x.t, `<b class="${x.caught ? 'mid' : 'bad'}">${esc(x.caught ? tr('FERMATA') : tr('ALLA CIECA'))}</b> ${who(x)}<span class="k">${esc(x.key)}</span><br><span class="dim">${esc(x.caught ? tr('Claude Code l\'ha fermata: il file era cambiato dopo l\'ultima lettura') : tr('modificato senza rileggerlo dopo la modifica di {who}', { who: x.changedBy || '?' }))}</span>`)).join(''));
+    html += `<p class="dim note">${esc(tr('Ricostruito da quello che l\'agente fa e dice, non da quello che pensa. «Senza prove» vuol dire che nel turno non c\'è un fatto che la confermi, non che sia falsa.'))}` +
+      (g.disk && !g.disk.checked && g.disk.reason ? ' ' + esc(tr('Disco non controllato: {why}.', { why: g.disk.reason })) : '') + '</p>';
+    box.innerHTML = html;
+  }
+
+  // ---------------------------------------------------------------- sorpresa e cause: sismografo e catene
+  const REACT = { corrects: [tr('SI CORREGGE'), '#00e436', 'ok'], insists: [tr('INSISTE'), '#ff004d', 'bad'], stops: [tr('SI FERMA'), '#83769c', ''], undecided: [tr('IN CORSO'), '#fff1e8', ''] };
+  const CAUSE = { follows: [tr('SEGUE LA TRACCIA'), 'ok'], elsewhere: [tr('CERCA ALTROVE'), 'bad'], thinking: [tr('CI PENSA ANCORA'), 'mid'], notrail: [tr('NESSUNA TRACCIA'), ''], undecided: [tr('IN CORSO'), ''] };
+  const FAIL_KIND = { test: tr('test fallito'), command: tr('comando fallito'), missing: tr('file inesistente'), permission: tr('permesso negato'), timeout: tr('tempo scaduto'), edit: tr('modifica senza la stringa da sostituire'), syntax: tr('errore di sintassi o di compilazione') };
+  const WHY = { usedToWork: tr('prima funzionava'), firstTry: tr('primo tentativo'), tdd: tr('test appena scritto: è normale che fallisca') };
+  const what = s => s.excerpt || String(s.target || '').replace(/^(cmd|abs|tool|web|agent):/, '');
+  const whyText = s => s.reasons.filter(r => WHY[r]).map(r => WHY[r]).join(' · ');
+  function drawSeismo(t) {
+    const cv = el().querySelector('.wm-seis canvas');
+    const { ctx, w, h } = fitCanvas(cv);
+    ctx.fillStyle = '#07060c'; ctx.fillRect(0, 0, w, h);
+    const g = W.ground;
+    ctx.font = '15px VT, monospace';
+    if (!g) { ctx.fillStyle = '#83769C'; ctx.fillText(tr('Carico la mappa…'), 12, 24); return; }
+    const T = nowT();
+    const list = g.surprises.filter(s => s.t <= T);
+    const [a, b] = span();
+    const many = W.aid === 'all';
+    const rows = many ? [...new Map(g.surprises.map(s => [s.agent, s.agentName])).entries()].slice(0, 10) : [[W.aid, '']];
+    const pad = many ? 92 : 10;
+    const x = tt => pad + ((tt - a) / (b - a)) * (w - pad - 10);
+    W.spikes = [];
+    if (!g.surprises.length) { ctx.fillStyle = '#83769C'; ctx.fillText(tr('Nessuna sorpresa: finora il mondo non gli ha dato torto.'), 12, 28); W.spikeHover = null; return; }
+    const rowH = (h - 10) / rows.length;
+    rows.forEach(([id, name], ri) => {
+      const base = 6 + (ri + 1) * rowH - 4;
+      ctx.strokeStyle = '#2a2440'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad, base + 0.5); ctx.lineTo(w - 6, base + 0.5); ctx.stroke();
+      // soglia della sorpresa forte (0,7)
+      ctx.setLineDash([2, 4]); ctx.strokeStyle = '#3a2f4f'; ctx.beginPath(); ctx.moveTo(pad, base - 0.7 * (rowH - 12) + 0.5); ctx.lineTo(w - 6, base - 0.7 * (rowH - 12) + 0.5); ctx.stroke(); ctx.setLineDash([]);
+      if (many) { ctx.fillStyle = '#c2c3c7'; ctx.fillText(clipText(ctx, name, pad - 8), 4, base - 2); }
+      for (const s of list) {
+        if (many && s.agent !== id) continue;
+        const sx = x(s.t), hh = Math.max(3, s.value * (rowH - 12));
+        const col = (REACT[s.reaction] || REACT.stops)[1];
+        // la più recente, se forte, trema un po'
+        const live = W.T == null && Date.now() - s.t < 20000 && s.value >= 0.7;
+        const jx = live ? Math.sin(t / 40) * 1.5 : 0;
+        ctx.fillStyle = col; ctx.fillRect(sx - 1 + jx, base - hh, 3, hh);
+        ctx.fillRect(sx - 3 + jx, base - hh - 2, 7, 3);
+        W.spikes.push({ x: sx, y0: base - hh - 3, y1: base, s });
+      }
+    });
+    ctx.fillStyle = '#fff1e8';
+    if (W.T != null) ctx.fillRect(x(W.T) - 1, 0, 2, h);
+    // tooltip della punta più vicina
+    const tip = el().querySelector('.wm-seis .wm-tip');
+    let best = null;
+    if (W.shover) for (const sp of W.spikes) { const d = Math.abs(sp.x - W.shover.x); if (d < 6 && W.shover.y >= sp.y0 - 6 && W.shover.y <= sp.y1 + 2 && (!best || d < best.d)) best = { d, sp }; }
+    W.spikeHover = best ? best.sp.s : null;
+    if (best) {
+      const s = best.sp.s, [rl] = REACT[s.reaction] || REACT.stops;
+      const html = `<b>${esc(FAIL_KIND[s.kind] || s.kind)}</b> · ${esc(tr('sorpresa {p}%', { p: Math.round(s.value * 100) }))}${many ? ' · ' + esc(s.agentName) : ''}<br>${esc(what(s))}<br><span class="dim">${esc(hhmm(s.t))} · ${esc(rl)}${whyText(s) ? ' · ' + esc(whyText(s)) : ''}</span>`;
+      if (tip._h !== html) { tip.innerHTML = html; tip._h = html; }
+      tip.hidden = false;
+      tip.style.left = Math.min(w - 260, W.shover.x + 12) + 'px';
+      tip.style.top = Math.min(h - 70, W.shover.y + 12) + 'px';
+    } else tip.hidden = true;
+  }
+  function drawSurprisePanel() {
+    const box = el().querySelector('.wm-sbody');
+    const g = W.ground, T = nowT();
+    const key = W.groundSeq + '|' + (W.T == null ? 'live' : Math.floor(W.T / 1000));
+    if (box._k === key) return;
+    box._k = key;
+    if (!g) { box.innerHTML = `<p class="dim">${esc(tr('Carico la mappa…'))}</p>`; return; }
+    const many = W.aid === 'all';
+    const sum = k => g.reactions.reduce((n, r) => n + (r[k] || 0), 0);
+    const ratio = (a, b) => (b ? `${a}/${b}` : '—');
+    let html = `<div class="gscore sstats">${esc(tr('si corregge {a} · segue la traccia {b} · catene complete {c}', { a: ratio(sum('corrects'), sum('total')), b: ratio(sum('follows'), sum('judged')), c: ratio(sum('complete'), sum('chains')) }))}</div>`;
+    const list = g.surprises.filter(s => s.t <= T).slice().reverse();
+    const who = s => (many ? `<span class="ag">${esc(s.agentName)}</span> ` : '');
+    const row = (t, inner) => `<div class="gi" data-t="${t}" title="${esc(tr('Vai a questo momento'))}">${inner}</div>`;
+    const chains = list.filter(s => s.refs && s.refs.length).slice(0, 40);
+    html += `<div class="gs"><div class="gt">${esc(tr('CATENE CAUSALI'))} <span class="n">${chains.length}</span></div>` + (chains.map(s => {
+      const [cl, cc] = s.chain.complete ? [tr('COMPLETA'), 'ok'] : (CAUSE[s.cause] || CAUSE.undecided);
+      const r0 = s.refs[0], fix = s.chain.fix;
+      const boxH = (cls, txt, tt) => `<span class="cbx ${cls}" title="${esc(tt || txt)}">${esc(txt)}</span>`;
+      return row(s.t, `<b class="${cc}">${esc(cl)}</b> ${who(s)}<span class="dim">${esc(hhmm(s.t))}</span><div class="chain">` +
+        boxH('err', FAIL_KIND[s.kind] || s.kind, s.excerpt) + '<i>→</i>' +
+        boxH('ref', r0.file.replace(/^abs:/, '') + ':' + r0.line + (s.refs.length > 1 ? ' +' + (s.refs.length - 1) : ''), s.refs.map(r => r.file + ':' + r.line).join('\n')) + '<i>→</i>' +
+        boxH(fix ? (fix.cited ? 'ok' : 'bad') : 'off', fix ? (fix.target || '').replace(/^(abs|cmd):/, '') : tr('nessuna modifica')) + '<i>→</i>' +
+        boxH(s.chain.confirm ? 'ok' : 'off', s.chain.confirm ? tr('di nuovo verde') : tr('non ancora')) + '</div>');
+    }).join('') || `<div class="dim">${esc(tr('nessuna: gli errori non citano file del progetto'))}</div>`) + '</div>';
+    const rest = list.filter(s => !(s.refs && s.refs.length)).slice(0, 30);
+    html += `<div class="gs"><div class="gt">${esc(tr('ALTRE SORPRESE'))} <span class="n">${rest.length}</span></div>` + (rest.map(s => {
+      const [rl, , rc] = REACT[s.reaction] || REACT.stops;
+      return row(s.t, `<b class="${rc}">${esc(rl)}</b> ${who(s)}<span class="q">${esc(what(s))}</span><br><span class="dim">${esc(hhmm(s.t))} · ${esc(FAIL_KIND[s.kind] || s.kind)} · ${esc(tr('sorpresa {p}%', { p: Math.round(s.value * 100) }))}${whyText(s) ? ' · ' + esc(whyText(s)) : ''}${s.discarded ? ' · ' + esc(tr('cita solo librerie')) : ''}</span>`);
+    }).join('') || `<div class="dim">${esc(tr('nessuno'))}</div>`) + '</div>';
+    html += `<p class="dim note">${esc(tr('Ricostruito dagli esiti dei comandi e dalle modifiche che seguono. «Segue la traccia» vuol dire che ha modificato un file citato dall\'errore, non che abbia capito davvero la causa.'))}</p>`;
+    box.innerHTML = html;
+  }
+
   let fogCache = null;
   function fogPattern(ctx) {
     if (fogCache) return ctx.createPattern(fogCache, 'repeat');
@@ -481,6 +686,15 @@
         if (s[4] === 1) { ctx.fillStyle = '#000'; ctx.fillRect(x(s[0]), ai * rowH + rowH / 2 - 1, 2, 2); }
       }
     });
+    // sorprese sulla linea del tempo, colorate per reazione
+    if (W.view === 'surp' && W.ground) for (const s of W.ground.surprises) if (s.t >= a && s.t <= b) { ctx.fillStyle = REACT[s.reaction] ? REACT[s.reaction][1] : '#c2c3c7'; const hh = Math.max(3, s.value * h); ctx.fillRect(x(s.t) - 1, h - hh, 3, hh); }
+    // mappa contro territorio: affermazioni (colore dell'esito), ricordi scaduti e fantasmi sulla linea del tempo
+    if (W.view === 'ground' && W.ground) {
+      const tick = (t, col, y0, hh) => { if (t >= a && t <= b) { ctx.fillStyle = col; ctx.fillRect(x(t) - 1, y0, 3, hh); } };
+      for (const c of W.ground.claims) tick(c.t, c.status === 'grounded' ? '#00e436' : c.status === 'contradicted' ? '#ff004d' : '#ffec27', 0, h / 2);
+      for (const s of W.ground.stale) tick(s.changedAt || s.readAt, '#ffa300', h / 2, h / 2);
+      for (const g of W.ground.ghosts) tick(g.t, '#ff77a8', h / 2, h / 2);
+    }
     const T = W.T == null ? b : W.T;
     ctx.fillStyle = '#fff1e8'; ctx.fillRect(x(T) - 1, 0, 2, h);
     const range = e.querySelector('input[type=range]');
@@ -709,6 +923,8 @@
     }
     try {
       if (W.view === 'mind') { drawBubble(t); drawStar(); drawComposition(); drawTimeline(); }
+      else if (W.view === 'ground') { drawTerritory(t, '.wm-gterr'); drawGroundPanel(); drawTimeline(); }
+      else if (W.view === 'surp') { drawSeismo(t); drawSurprisePanel(); drawTimeline(); }
       else { drawTerritory(t); drawTrajectory(t); drawRadar(); drawTimeline(); }
     } catch (err) { console.error(err); }
     requestAnimationFrame(loop);

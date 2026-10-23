@@ -4,6 +4,27 @@ Le versioni di Platypus (fino alla 2.7 si chiamava Agent Office), dalla più rec
 
 *English version: [CHANGELOG.md](CHANGELOG.md).*
 
+## 2.9: mappa e territorio, sorpresa e cause, il Libro della bottega
+
+Platypus non può guardare dentro la testa del modello, ma vede sia la mappa dell'agente (quello che ha letto, detto e fatto) sia il territorio (il disco, gli esiti dei comandi). Questa versione misura la distanza tra le due cose. Tutto è ricostruito dai fatti, resta sul computer, e i giudizi incerti si mostrano come tali.
+
+- **Mappa contro territorio** (nuova vista **MAPPA E TERRITORIO** nella mappa della realtà):
+  - **ricordi scaduti**: un file che l'agente ha letto è poi cambiato (da un altro agente, fuori dalla sessione, o è stato cancellato) e lui non l'ha riletto; **modifiche alla cieca** quando lo modifica lo stesso, o Claude Code lo ferma;
+  - **percorsi inventati**: file che prova ad aprire, che i comandi non trovano o che cita nelle risposte, e che non esistono; «poi creato» quando erano un'intenzione;
+  - **affermazioni** nelle risposte («i test passano», «ho verificato», «ho corretto X», «ho creato X», «fatto», in italiano e inglese) confrontate con i suoi passi nello stesso turno: ancorate, senza prove o smentite; l'**indice di ancoraggio** è la quota di quelle ancorate;
+  - in ufficio un orologio accanto alla testa di chi ha un ricordo scaduto, e un fumetto tratteggiato «senza prove: «…»»; **avvisi di ancoraggio** facoltativi in OPZ.
+- **Sorpresa e cause** (nuova vista **SORPRESA E CAUSE**):
+  - ogni fallimento ha una **sorpresa** da 0 a 1, dal tipo di fallimento (test, comandi, file mancanti, permessi, tempi scaduti, sintassi, modifiche fallite, riconosciuti per Jest, Vitest, pytest, Go, cargo, npm, tsc, Node, Python, PowerShell) e dalla sua storia: di più se prima funzionava, di meno al primo tentativo o per un test appena scritto;
+  - cosa fa dopo l'agente: **si corregge, insiste o si ferma**, con il tempo di recupero;
+  - se **segue la traccia**: i file e le righe citati dall'errore contro le sue prime modifiche, e la **catena causale** errore → file citato → modifica → conferma;
+  - un **sismografo** con una riga per agente; in ufficio un «!?» tremolante per una sorpresa forte e una nuvoletta grigia per chi insiste.
+- **Libro della bottega e il Nonno**:
+  - ogni progetto ha un **libro** di lezioni dedotte dalle sue sessioni: comandi instabili, file fragili, correzioni note, trappole, file contesi, percorsi inventati, passi lenti. Il peso di una lezione cresce con i casi e le sessioni e si dimezza ogni 30 giorni; un caso solo è solo un'osservazione;
+  - il libro impara dal vivo e, con **Impara dall'archivio**, dalle sessioni passate; sta in `~/.platypus/bottega` e l'apprendimento si spegne in OPZ;
+  - il **Nonno**, un anziano con il cardigan e il libro sotto il braccio, va alla scrivania di chi sta per ripetere un errore già visto e racconta la lezione, al massimo una volta ogni 3 minuti per piano;
+  - il **Libro** (LIBRO sul tabellone del piano, BOTTEGA nell'atrio, o un clic sul Nonno): lezioni con le prove, fissa/ignora/dimentica, replay da una prova, e **Proponi per CLAUDE.md**: una sezione breve per il `CLAUDE.md` del progetto, da copiare o da scrivere tra i marcatori di Platypus con una copia di sicurezza, solo dopo la tua conferma (mai per la demo, Cowork o cartelle in sola lettura).
+- **Demo**: il piano 1 mette in scena tutto nel primo minuto e mezzo, con un libro finto che non finisce mai sul disco.
+
 ## 2.8: si chiama Platypus
 
 - **Nuovo nome**: Agent Office diventa **Platypus**, nell'app, nei menu, nei collegamenti e nei documenti.

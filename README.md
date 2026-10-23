@@ -13,6 +13,9 @@ Runs on **Windows, macOS and Linux**: clone it with git and launch it, no instal
 - **Permissions from the balloon**: when an agent asks for permission, answer **YES / ALWAYS / NO** right in the office, or in the terminal as usual.
 - **Costs and tokens** per floor and over time, **alerts** (stuck agent, repeated errors, budget exceeded), **archive and replay** of past sessions, **daily report**.
 - **Map of reality** for each agent: the territory it knows (with fog over what it has never seen), its trajectory through a 7-dimensional space, the context bubble and the task's north star (experimental).
+- **Map versus territory**: files an agent read that have changed since (stale memories), paths it looked for or mentioned that don't exist (invented paths), and its claims ("tests pass", "I fixed X") checked against what it actually did in the same turn, with a grounding index. In the office: a clock next to the head, a dashed balloon with "no evidence".
+- **Surprise and causes**: a seismograph of the failures, as tall as they were unexpected; whether the agent corrects itself, insists or stops; whether its first edits touch the files the error points to, up to the test that turns green again. In the office: a "!?" above the head and a grey cloud for whoever insists.
+- **Workshop book and Grandpa**: the memory of each project, deduced from its sessions (flaky commands, fragile files, known fixes, traps…). Grandpa walks to the desk of an agent about to repeat a known mistake and tells the lesson; the Book can propose a section for the project's `CLAUDE.md`, written only after you confirm.
 - **Office life**: the cat on the keyboard of whoever is stuck, the annoying coworker (you pick the name), HR scolding whoever knocks over a whiteboard, parties for commits and green tests, night time, outfits for holidays and weather, age and superhero capes based on model and effort.
 - **Relax area**: a RELAX door in the atrium (or the R key) leads to the cafeteria, where employees sit at the tables and on the sofas, grab a coffee, and one eats a banana (and gets teased for it); hovering an employee shows their plausible yet absurd job title; four arcade cabinets (Pac-Man, Tetris, Space Invaders, Frogger) are playable by clicking on them.
 - **Italian and English**, with a structure ready for more languages.
@@ -23,6 +26,7 @@ What's new in each version is in [CHANGELOG.md](CHANGELOG.md).
 |---|---|
 | ![The lobby with the board](docs/img/atrio.png) | ![Permissions from the balloon](docs/img/permesso.png) |
 | ![Map of reality](docs/img/mappa.png) | ![Context bubble and north star](docs/img/bolla-stella.png) |
+| ![Map versus territory](docs/img/mappa-territorio.png) | ![Grandpa tells a lesson from the Workshop book](docs/img/nonno.png) |
 
 ## Quick start
 

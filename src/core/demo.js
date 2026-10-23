@@ -9,12 +9,15 @@ const { tr } = require('../i18n');
 const REVIEW_TARGETS = () => [tr('modulo ordini'), tr('API magazzino'), tr('scheduler PLC'), tr('report turni'), tr('login operatori'), tr('export SAP'), tr('allarmi linea 3'), tr('ricette prodotto'), tr('tracciabilità lotti'), tr('dashboard OEE')];
 
 const { DemoWorld, treeFor } = require('./demoworld');
+const { classifyFailure } = require('./surprise');
+const { errorPattern } = require('./bottega');
 
 function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
 
 class Demo {
-  constructor(state) {
+  constructor(state, { bottega } = {}) {
     this.state = state;
+    this.bottega = bottega || null; // per il libro finto dei progetti della demo
     this.timer = null;
     this.n = 0;
     this.ids = {};
@@ -22,7 +25,8 @@ class Demo {
   }
   get on() { return !!this.timer; }
 
-  start() {
+  // scale: accorcia i tempi degli scenari costruiti apposta (le prove automatiche usano 0.02)
+  start({ scale = 1 } = {}) {
     if (this.timer) return;
     this.state.demo = true;
     this.ids.a = this.open('C:/Progetti/portale-clienti', tr('Refactoring login e sessioni'), 'cli');
@@ -33,7 +37,7 @@ class Demo {
     this.spawn(this.ids.d, 'Explore', tr('Leggi i report dei trimestri precedenti'));
     // capo reparto con la sua squadra
     const arch = this.spawn(this.ids.a, 'architect', tr('Progetta il nuovo modulo sessioni'));
-    for (const [t, d] of [['Explore', tr('Mappa i moduli di autenticazione')], ['Explore', tr('Trova dove scadono i token')], ['test-runner', tr('Esegui la suite di test')]]) this.spawn(this.ids.a, t, d, arch);
+    const team = [['Explore', tr('Mappa i moduli di autenticazione')], ['Explore', tr('Trova dove scadono i token')], ['test-runner', tr('Esegui la suite di test')]].map(([t, d]) => this.spawn(this.ids.a, t, d, arch));
     const planId = this.spawn(this.ids.a, 'Plan', tr('Piano di migrazione al nuovo DB'));
     // questo a un certo punto si perde tra i componenti grafici: si vede la deriva dalla stella polare
     const planA = this.state.sessions.get(this.ids.a).subs.get(planId);
@@ -63,14 +67,90 @@ class Demo {
       this.world.seed(x, x.main, 14);
       for (const a of x.subs.values()) this.world.seed(x, a, a._demoStuck ? 10 : a._demoDrift ? 24 : 5 + Math.floor(Math.random() * 14), a._demoStuck ? 'npm run test:e2e' : null);
     }
+    this.groundingScenario(this.ids.a, { explore: team[0], architect: arch, tester: team[2], plan: planId }, scale);
+    this.seedBooks();
     this.timer = setInterval(() => this.step(), 900);
     this.state.touch();
+  }
+
+  // il Libro della bottega dei progetti della demo: lezioni finte degli ultimi giorni, coerenti con gli scenari
+  // del piano 1 (così il Nonno passa nei primi secondi, quando ARCHITECT modifica session.ts). Solo in memoria.
+  seedBooks() {
+    if (!this.bottega) return;
+    const now = Date.now(), day = 86400000;
+    const at = (d, h) => now - d * day - h * 3600000;
+    const cases = [];
+    const add = (kind, key, list, agent, excerpt) => { for (const [d, h, sid] of list) cases.push({ kind, key, t: at(d, h), sid, agent, excerpt }); };
+    // lo stesso errore dello scenario: la chiave nasce dallo stesso estratto, così il Nonno lo riconosce
+    const fail = classifyFailure("FAIL tests/auth.test.ts\n  ● refresh › renews the token\n    TypeError: Cannot read properties of undefined (reading 'exp')\n      at renew (src/auth/refresh.ts:42:18)", 'npm test');
+    add('stale-trap', 'src/auth/session.ts', [[4, 3, 'demo-old-1'], [2, 5, 'demo-old-2'], [1, 2, 'demo-old-3']], 'EXPLORE', tr('cambiato da {who}', { who: 'ARCHITECT' }));
+    add('ghost-path', 'src/auth/oldToken.ts', [[3, 1, 'demo-old-1'], [1, 4, 'demo-old-3']], 'TEST-RUNNER', 'File does not exist.');
+    add('flaky-command', 'npm run test:e2e', [[5, 2, 'demo-old-0'], [3, 6, 'demo-old-1'], [1, 1, 'demo-old-3']], 'TEST-RUNNER', 'Timeout - Async callback was not invoked within the 5000 ms timeout');
+    add('slow-step', 'npm run test:e2e', [[2, 3, 'demo-old-2']], 'TEST-RUNNER', tr('{min} min', { min: 13 }));
+    add('fragile-file', 'src/auth/refresh.ts', [[4, 2, 'demo-old-1'], [2, 2, 'demo-old-2']], 'TEST-RUNNER', fail.excerpt);
+    add('known-fix', errorPattern(fail.excerpt) + ' → src/auth/refresh.ts', [[4, 1, 'demo-old-1'], [2, 1, 'demo-old-2']], 'EXPLORE', fail.excerpt);
+    this.bottega.seedDemo('C:/Progetti/portale-clienti', cases);
+    const rev = [];
+    for (const [d, h, sid] of [[3, 2, 'demo-old-5'], [2, 4, 'demo-old-6'], [1, 3, 'demo-old-7']]) rev.push({ kind: 'flaky-command', key: 'npm test -- specs', t: at(d, h), sid, agent: 'SPEC-CHECKER', excerpt: 'FAIL specs/REQ-012.md' });
+    for (const [d, h, sid] of [[2, 1, 'demo-old-6'], [1, 1, 'demo-old-7']]) rev.push({ kind: 'ghost-path', key: 'specs/REQ-049.md', t: at(d, h), sid, agent: 'REVIEWER', excerpt: 'File does not exist.' });
+    this.bottega.seedDemo('D:/dev/mes-clone', rev);
+  }
+
+  // mappa contro territorio, costruita apposta sul piano 1: un ricordo scaduto, un percorso inventato,
+  // un'affermazione senza prove che nel turno dopo diventa ancorata. Il disco è finto (s.demoDisk).
+  groundingScenario(sid, ids, scale) {
+    const s = this.state.sessions.get(sid);
+    if (!s) return;
+    const ag = { main: s.main, explore: s.subs.get(ids.explore), architect: s.subs.get(ids.architect), tester: s.subs.get(ids.tester), plan: s.subs.get(ids.plan) };
+    if (!ag.explore || !ag.architect || !ag.tester || !ag.plan) return;
+    s.demoDisk = new Map([['src/auth/oldToken.ts', { exists: false }]]);
+    const hold = Date.now() + 150000 * scale; // intanto questi agenti non fanno altro: lo scenario resta leggibile
+    for (const a of Object.values(ag)) a._demoHold = hold;
+    const at = (sec, fn) => { const tm = setTimeout(() => { this.world.timers.delete(tm); try { fn(); } catch {} }, sec * 1000 * scale); this.world.timers.add(tm); };
+    const tool = (sec, a, name, input, out, err, dur = 1) => {
+      const id = 'demo-gr-' + (++this.n);
+      at(sec, () => {
+        this.hook(sid, 'PreToolUse', { agent_id: a.kind === 'main' ? undefined : a.id, agent_type: a.kind === 'main' ? undefined : a.type, tool_name: name, tool_input: input });
+        this.state.worldStart(s, a, id, name, input, Date.now());
+      });
+      at(sec + dur, () => {
+        this.state.worldEnd(s, a, id, !!err, { content: out }, { toolUseResult: {} }, Date.now());
+        if (name === 'Edit' && !err) s.demoDisk.set(input.file_path, { mtime: Date.now() });
+      });
+    };
+    const reply = (sec, text) => at(sec, () => {
+      this.state.mindOf(s, s.main).add('reply', Date.now(), text.slice(0, 80), text);
+      this.state.worldReply(s, s.main, Date.now(), text);
+      this.state.setAgent(s.main, 'writing', tr('Scrive: «{text}»', { text: text.slice(0, 44) }), Date.now());
+    });
+    tool(3, ag.explore, 'Read', { file_path: 'src/auth/session.ts' }, "import { token } from './token';");
+    tool(8, ag.architect, 'Edit', { file_path: 'src/auth/session.ts' }, 'ok');
+    tool(12, ag.tester, 'Read', { file_path: 'src/auth/oldToken.ts' }, 'File does not exist.', true);
+    tool(14, s.main, 'Read', { file_path: 'src/auth/refresh.ts' }, "import { session } from './session';"); // rilegge prima di modificare: niente modifica alla cieca
+    tool(16, s.main, 'Edit', { file_path: 'src/auth/refresh.ts' }, 'ok');
+    reply(19, tr('Ho corretto il refresh in {file} e i test passano.', { file: '`src/auth/refresh.ts`' }));
+    at(50, () => this.hook(sid, 'UserPromptSubmit', { prompt: tr('Hai lanciato i test?') }));
+    tool(53, s.main, 'Bash', { command: 'npm test' }, 'Tests: 42 passed, 42 total', false, 7);
+    reply(62, tr('Ho lanciato {cmd}: ora tutti i test passano.', { cmd: '`npm test`' }));
+    // sorpresa e cause: una catena completa (il test che prima passava fallisce, segue la traccia, torna verde)
+    // e un agente che cerca altrove (l'errore cita migrate.ts, lui modifica un componente grafico)
+    const trace = "FAIL tests/auth.test.ts\n  ● refresh › renews the token\n    TypeError: Cannot read properties of undefined (reading 'exp')\n      at renew (src/auth/refresh.ts:42:18)\n      at Object.<anonymous> (tests/auth.test.ts:17:5)\n      at node_modules/jest-circus/build/utils.js:298:28\nTests: 1 failed, 41 passed, 42 total";
+    tool(64, ag.tester, 'Read', { file_path: 'package.json' }, '{ "scripts": { "test": "jest" } }');
+    tool(67, ag.tester, 'Read', { file_path: 'tests/auth.test.ts' }, "import { renew } from '../src/auth/refresh';");
+    tool(70, ag.tester, 'Bash', { command: 'npm test' }, 'Tests: 42 passed, 42 total', false, 3);
+    tool(76, ag.tester, 'Bash', { command: 'npm test' }, trace, true, 3);
+    tool(81, ag.tester, 'Read', { file_path: 'src/auth/refresh.ts' }, "import { session } from './session';");
+    tool(85, ag.tester, 'Edit', { file_path: 'src/auth/refresh.ts' }, 'ok');
+    tool(89, ag.tester, 'Bash', { command: 'npm test' }, 'Tests: 42 passed, 42 total', false, 3);
+    tool(78, ag.plan, 'Bash', { command: 'npx tsc --noEmit' }, "src/db/migrate.ts(12,5): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.", true, 2);
+    tool(84, ag.plan, 'Edit', { file_path: 'src/ui/components/Menu.tsx' }, 'ok');
   }
 
   stop() {
     clearInterval(this.timer);
     this.timer = null;
     this.world.stop();
+    if (this.bottega) this.bottega.dropDemo();
     this.state.demo = false;
     this.state.removeDemo();
   }
@@ -143,7 +223,8 @@ class Demo {
       const r = Math.random();
       // capo
       if (r < 0.4) this.state.addTokens(s, s.main, { input_tokens: 30, output_tokens: 200 + Math.random() * 500, cache_read_input_tokens: 40000, cache_creation_input_tokens: 1500 }, null);
-      if (s.main.status === 'waiting') { if (r < 0.2) this.hook(s.id, 'PostToolUse', {}); }
+      if (s.main._demoHold > Date.now()) { /* sta recitando uno scenario: niente azioni a caso */ }
+      else if (s.main.status === 'waiting') { if (r < 0.2) this.hook(s.id, 'PostToolUse', {}); }
       else if (s.main.status === 'idle') { if (r < 0.05) this.hook(s.id, 'UserPromptSubmit', { prompt: pick([tr('Ok, procedi'), tr('Aggiungi anche i test'), tr('Ora scrivi il README')]) }); }
       else if (s.id === this.ids.c && r < 0.05) this.hook(s.id, 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'git push origin main' } });
       else if (r < 0.03 && !subs.length) this.hook(s.id, 'Stop', {});
@@ -151,7 +232,7 @@ class Demo {
       else if (r < 0.45) this.hook(s.id, 'PostToolUse', {});
       // squadre
       for (const a of subs) {
-        if (a._demoStuck) continue;
+        if (a._demoStuck || a._demoHold > Date.now()) continue;
         const q = Math.random();
         // token: ogni agente consuma un po' a ogni passo
         if (q < 0.5) this.state.addTokens(s, a, { input_tokens: 40, output_tokens: 300 + Math.random() * 600, cache_read_input_tokens: 20000 + Math.random() * 30000, cache_creation_input_tokens: Math.random() * 3000 }, null);
