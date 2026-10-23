@@ -3001,6 +3001,7 @@ const SETTINGS_CHECKS = [
   ['partyEnabled', tr('Feste per commit, PR e test verdi')],
   ['nightAuto', tr('Luci basse e pulizie dopo le 20')],
   ['outfits', tr('Vestiti per feste, stagioni e meteo')],
+  ['groundingAlerts', tr('Avvisi di ancoraggio: modifiche alla cieca e affermazioni smentite')],
 ];
 const SETTINGS_TEXTS = [
   ['pestName', tr('Nome del collega fastidioso'), 40, tr('Il nome del collega fastidioso')],

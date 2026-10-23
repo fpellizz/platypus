@@ -144,7 +144,8 @@ function findGhosts(session, agents, cwd, { only = null, replay = false } = {}) 
 }
 
 // agents: tutti gli agenti della sessione [{id, name, world}]; only: Set degli id da esaminare (null = tutti)
-function checkStale(session, agents, cwd, { only = null, replay = false } = {}) {
+// disk: false per usare solo quello che si sa in memoria (gli avvisi, che si ricalcolano spesso)
+function checkStale(session, agents, cwd, { only = null, replay = false, disk: useDisk = true } = {}) {
   const stale = [], blindEdits = [];
   // chi ha modificato cosa, e quando (solo modifiche riuscite)
   const editsByKey = new Map();
@@ -163,7 +164,7 @@ function checkStale(session, agents, cwd, { only = null, replay = false } = {}) 
     for (const e of editsByKey.get(key) || []) if (e.id !== id && e.t > from && e.t <= to && (!best || e.t > best.t)) best = e;
     return best;
   };
-  const disk = diskOf(session, cwd, { replay });
+  const disk = useDisk ? diskOf(session, cwd, { replay }) : { reason: '' };
   for (const a of agents) {
     if (!a.world || (only && !only.has(a.id))) continue;
     for (const [key, nd] of a.world.nodes) {

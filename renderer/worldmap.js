@@ -65,7 +65,7 @@
       <div class="wm-head">
         <h3>${esc(tr('MAPPA DELLA REALTÀ'))}</h3>
         <select class="wm-agent">${opts.map(([k, l]) => `<option value="${esc(k)}" ${k === W.aid ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
-        <span class="wm-views"><button data-v="map">${esc(tr('TERRITORIO E TRAIETTORIA'))}</button><button data-v="mind">${esc(tr('BOLLA E STELLA POLARE'))}</button><button data-v="ground">${esc(tr('MAPPA E TERRITORIO'))}</button></span>
+        <span class="wm-views">${[['map', tr('TERRITORIO E TRAIETTORIA')], ['mind', tr('BOLLA E STELLA POLARE')], ['ground', tr('MAPPA E TERRITORIO')]].map(([v, l]) => `<button data-v="${v}" title="${esc(l)}">${esc(l)}</button>`).join('')}</span>
         <span class="wm-phase"></span>
         <span class="wm-stats"></span>
         <button class="wm-help-btn" title="${esc(tr('Come si legge'))}">?</button>
@@ -97,6 +97,7 @@
         <p><b>${esc(tr('Le 7 dimensioni'))}</b>: ${DIM_LABELS.map((l, i) => `<i>${esc(l)}</i> ${esc(DIM_HELP[i])}`).join(' · ')}. ${esc(tr('Sono calcolate sulle ultime 8 azioni.'))}</p>
         <p><b>${esc(tr('Bolla del contesto'))}</b>: ${esc(tr('ogni punto è un pezzo di quello che l\'agente ha davanti: il compito, i file letti, i risultati dei comandi e delle ricerche, le sue risposte. Pezzi che parlano delle stesse cose stanno vicini. Più il punto è grande, più token occupa. La bolla si gonfia man mano che il contesto si riempie (verde, poi giallo, poi rosso); quando Claude lo compatta, la bolla si sgonfia e i pezzi dimenticati escono fuori come polvere grigia, mentre il riassunto resta dentro.'))}</p>
         <p><b>${esc(tr('Stella polare'))}</b>: ${esc(tr('la stella è il compito che gli è stato dato. Il grafico dice quanto ogni azione parla delle stesse cose del compito, rispetto alle sue prime azioni: se resta bassa a lungo l\'agente sta andando alla deriva. Una nuova richiesta sposta la stella.'))}</p>
+        <p><b>${esc(tr('Mappa e territorio'))}</b>: ${esc(tr('confronta quello che l\'agente sa e dice con quello che c\'è davvero. Contorno arancione con l\'orologio: un file che ha letto ed è poi cambiato (da un altro agente o fuori dalla sessione) senza che lui lo rileggesse, un ricordo scaduto. Caselle viola tratteggiate con il punto di domanda: file che ha cercato, aperto o citato e che non esistono, i percorsi inventati; più chiare se poi qualcuno li ha creati (era un\'intenzione). A destra, le sue affermazioni («i test passano», «ho corretto X»…) confrontate con quello che ha fatto nello stesso turno: ancorata se c\'è un fatto che la prova, senza prove se non c\'è, smentita se l\'ultimo esito è un fallimento. L\'indice di ancoraggio è la quota di affermazioni ancorate. Clic su una voce per andare a quel momento.'))}</p>
         <p class="dim">${esc(tr('Motore lessicale sperimentale: confronta le parole importanti (anche dentro i nomi dei file e del codice), non il significato profondo. Funziona tutto sul computer, senza scaricare modelli.'))}</p>
         <p class="dim">${esc(tr('La mappa è ricostruita da quello che l\'agente fa (file, comandi, ricerche, esiti), non da quello che pensa: i suoi pensieri non sono visibili.'))}</p>
       </div>`;

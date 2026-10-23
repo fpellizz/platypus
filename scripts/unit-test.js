@@ -251,6 +251,26 @@ function claimTests(ok) {
   ok(sc && sc.total >= 5 && sc.pct === Math.round(100 * sc.grounded / sc.total), `indice di ancoraggio: ${sc ? sc.pct + '% su ' + sc.total : '-'}`);
 }
 
+// avvisi di ancoraggio (facoltativi) costruiti da OfficeState
+function alertTests(ok) {
+  const { OfficeState } = require(path.join(ROOT, 'src', 'core', 'state'));
+  const st = new OfficeState({});
+  const s = st.ensureSession('al-1', '/p', Date.now());
+  const t0 = Date.now() - 60000;
+  const sub = st.ensureSub(s, 'sub-1', { agentType: 'REFACTOR' }, true, t0);
+  st.worldStart(s, s.main, 'x1', 'Read', { file_path: '/p/src/a.ts' }, t0);
+  st.worldEnd(s, s.main, 'x1', false, { content: 'x' }, {}, t0 + 100);
+  st.worldStart(s, sub, 'x2', 'Edit', { file_path: '/p/src/a.ts' }, t0 + 1000);
+  st.worldEnd(s, sub, 'x2', false, { content: 'ok' }, {}, t0 + 1100);
+  st.worldStart(s, s.main, 'x3', 'Edit', { file_path: '/p/src/a.ts' }, t0 + 2000);
+  st.worldEnd(s, s.main, 'x3', false, { content: 'ok' }, {}, t0 + 2100);
+  st.updateAlerts(s);
+  ok(!s.alerts.some(x => x.kind === 'grounding'), 'avvisi di ancoraggio spenti di base');
+  st.setSettings({ groundingAlerts: true });
+  st.updateAlerts(s);
+  ok(s.alerts.some(x => x.kind === 'grounding' && /src\/a\.ts/.test(x.text)), 'acceso: avviso per la modifica alla cieca');
+}
+
 function run(ok) {
   console.log('mappa contro territorio');
   groundingTests(ok);
@@ -258,6 +278,7 @@ function run(ok) {
   ghostTests(ok);
   console.log('affermazioni');
   claimTests(ok);
+  alertTests(ok);
 }
 
 module.exports = { run };

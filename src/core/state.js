@@ -46,6 +46,7 @@ const DEFAULT_SETTINGS = {
   weatherCity: 'Roma',  // città per il meteo (vuoto = niente meteo)
   approveFromOffice: true, // permessi approvabili dai fumetti dell'ufficio
   approveWaitSec: 120,  // quanto a lungo l'ufficio tiene in sospeso una richiesta
+  groundingAlerts: false, // avvisi di ancoraggio: modifiche alla cieca e affermazioni smentite
   coworkDirs: '',       // cartelle extra dove cercare le sessioni Cowork (separate da ;)
   claudeDirs: '',       // altre cartelle di configurazione di Claude Code (es. dentro WSL), separate da ;
   lang: 'auto',         // lingua: auto (quella del sistema), it, en
@@ -53,6 +54,7 @@ const DEFAULT_SETTINGS = {
 const LONG_STRINGS = { coworkDirs: 600, claudeDirs: 600 };
 const i18n = require('../i18n');
 const { AgentWorld } = require('./worldmap');
+const grounding = require('./grounding');
 const { AgentMind, Corpus } = require('./semantic');
 
 // testo di un'azione per la "mente": cosa ha chiesto lo strumento
@@ -808,6 +810,24 @@ class OfficeState extends EventEmitter {
     if (this.retired.size > 200) this.retired.delete(this.retired.keys().next().value);
   }
 
+  // avvisi di ancoraggio (facoltativi): solo fatti in memoria, senza disco, ricalcolati al massimo ogni 10 s
+  groundingAlerts(s, t) {
+    if (s._ground && t - s._ground.t < 10000) return s._ground.items;
+    const items = [];
+    try {
+      const agents = [s.main, ...s.subs.values()].filter(a => a.world).map(a => ({ id: a.id, name: displayName(a), world: a.world, mind: a.mind }));
+      const recent = x => t - x.t < 10 * 60000;
+      for (const b of grounding.checkStale(s, agents, s.cwd, { disk: false }).blindEdits.filter(b => recent(b) && !b.caught)) {
+        items.push({ id: 'ground:blind:' + b.agent + ':' + b.key + ':' + b.t, agentId: b.agent, kind: 'grounding', level: 'warn', since: b.t, text: tr('{name} ha modificato {file} senza rileggerlo dopo la modifica di {who}', { name: b.agentName, file: clip(b.key, 40), who: b.changedBy || '?' }) });
+      }
+      for (const c of grounding.checkClaims(s, agents, s.cwd).claims.filter(c => recent(c) && c.status === 'contradicted')) {
+        items.push({ id: 'ground:claim:' + c.agent + ':' + c.t + ':' + c.kind, agentId: c.agent, kind: 'grounding', level: 'warn', since: c.t, text: tr('{name} dice «{text}», ma l\'ultimo esito lo smentisce', { name: c.agentName, text: clip(c.text, 50) }) });
+      }
+    } catch {}
+    s._ground = { t, items: items.slice(0, 6) };
+    return s._ground.items;
+  }
+
   // ---------- avvisi intelligenti ----------
   updateAlerts(s) {
     const t = this.now(), st = this.settings;
@@ -831,6 +851,7 @@ class OfficeState extends EventEmitter {
       if (m.status === 'idle' && !activeSubs && s.alive !== false && t - m.statusSince > st.idleMin * 60000 && t - m.statusSince < 12 * 3600000) {
         out.push({ id: 'idle:main', agentId: 'main', kind: 'idle', level: 'info', since: m.statusSince, text: tr('La sessione ti aspetta da {min} min', { min: min(t - m.statusSince) }) });
       }
+      if (st.groundingAlerts) out.push(...this.groundingAlerts(s, t));
       const cost = this.costOf(s);
       if (st.budgetUSD > 0 && cost > st.budgetUSD) {
         out.push({ id: 'budget', agentId: 'main', kind: 'budget', level: 'warn', since: t, text: tr('Costo {cost} oltre il budget di {budget}', { cost: fmtMoney(cost), budget: fmtMoney(st.budgetUSD, st.budgetUSD % 1 ? 2 : 0) }) });
