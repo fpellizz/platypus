@@ -68,17 +68,24 @@ function diskOf(session, cwd, { replay } = {}) {
     if (v !== undefined) c.mtimes.set(key, v);
     return v;
   };
-  // prima l'albero del progetto (già in cache per la mappa), poi il disco per le cartelle che l'albero salta
-  let inTree = null;
-  return {
-    stat,
-    exists: key => {
-      if (!inTree) { const tree = scanTree(root); inTree = tree.available ? treeIndex(tree.files) : () => false; }
-      if (inTree(key)) return true;
-      const v = stat(key);
-      return v === undefined ? undefined : v !== null;
-    },
+  // prima l'albero del progetto (già in cache per la mappa), poi il disco per le cartelle che l'albero salta,
+  // poi i worktree di Claude Code del progetto (gli agenti che lavorano lì citano percorsi relativi al worktree)
+  let inTree = null, truncated = false, worktrees = null;
+  const known = new Map();
+  const wts = () => worktrees || (worktrees = (() => {
+    try { return fs.readdirSync(path.join(root, '.claude', 'worktrees'), { withFileTypes: true }).filter(d => d.isDirectory()).slice(0, 20).map(d => path.join(root, '.claude', 'worktrees', d.name)); } catch { return []; }
+  })());
+  const exists = key => {
+    if (!inTree) { const tree = scanTree(root); truncated = !!tree.truncated; inTree = tree.available ? treeIndex(tree.files) : () => false; }
+    if (inTree(key)) return true;
+    const v = stat(key);
+    if (typeof v === 'number') return true;
+    for (const w of wts()) { try { fs.statSync(path.join(w, key)); return true; } catch {} }
+    // un nome senza cartella, in un progetto troppo grande per l'albero: non si può dire
+    if (truncated && !key.includes('/')) return undefined;
+    return v === undefined ? undefined : false;
   };
+  return { stat, exists: key => { if (!known.has(key)) known.set(key, exists(key)); return known.get(key); } };
 }
 
 // percorsi citati in una risposta: tra backtick anche un nome da solo, nel testo solo "cartella/file.ext".
@@ -132,7 +139,8 @@ function findGhosts(session, agents, cwd, { only = null, replay = false } = {}) 
     for (const r of a.world.replies) {
       for (const p of pathsInReply(r.text)) {
         const key = relKey(p.path, cwd);
-        if (!isProjectFile(key) || seen.has(key) || appeared.has(key)) continue;
+        // un nome senza cartella è troppo ambiguo (file di altri progetti, della home, delle librerie): non si giudica
+        if (!isProjectFile(key) || !key.includes('/') || seen.has(key) || appeared.has(key)) continue;
         seen.add(key);
         if (disk.exists(key) !== false) continue;
         ghosts.push({ key, agent: a.id, agentName: a.name, t: r.t, source: 'reply', excerpt: p.line, createdLater: false });
@@ -201,11 +209,14 @@ function checkStale(session, agents, cwd, { only = null, replay = false, disk: u
 const CLAIM_RULES = [
   ['tests', /\b(?:all |tutti i )?tests? (?:now )?(?:pass(?:es|ed)?|are (?:all )?(?:passing|green)|(?:are )?green)\b|\ball green\b|\btutto verde\b|\bsuite (?:è )?verde\b|\b(?:i |tutti i )?test (?:ora )?(?:passano|sono (?:tutti )?(?:verdi|passati)|tornano verdi)\b/i],
   ['verified', /\b(?:ho |l'ho |abbiamo )?verificat[oaie]\b|\b(?:I(?:'ve| have)? )?verified\b|\bconfermat[oaie]\b|\bconfirmed\b|\bfunziona(?:no)?\b|\b(?:it |now it |that )?works\b|\bis working\b/i],
-  ['fixed', /\b(?:ho |abbiamo |l'ho )?(?:corrett[oaie]|sistemat[oaie]|risolt[oaie]|fixat[oaie])\b|\b(?:I(?:'ve| have)? )?fixed\b|\bresolved\b/i],
+  // in italiano serve l'ausiliare: "è corretta" vuol dire "è giusta", non "l'ho corretta"
+  ['fixed', /(?<![A-Za-zÀ-ÿ'])(?:ho|abbiamo|l'ho|l'abbiamo|è stat[oa]|sono stat[ie])\s+(?:già\s+|appena\s+)?(?:corrett[oaie]|sistemat[oaie]|risolt[oaie]|fixat[oaie])\b|\b(?:I(?:'ve| have)? )?fixed\b|\bresolved\b/i],
   ['created', /\b(?:ho |abbiamo )?(?:creat[oaie]|aggiunt[oaie])\b|\b(?:I(?:'ve| have)? )?(?:created|added)\b/i],
   ['done', /\b(?:completat[oaie]|finit[oaie]|terminat[oaie])\b|(?<!\b(?:il|un|del|al|nel|dal|sul) )\bfatto\b|\b(?:done|completed|finished)\b/i],
 ];
-const NOT_A_CLAIM = /\b(?:se|if|quando|when|once|unless|finché|until|dopo che|prima che|before|whether|will|going to|let me|let's|I'll|we'll|vado a|devo|dobbiamo|dovrebbe(?:ro)?|should|need to|needs to|bisogna|occorre|make sure|assicur\w*|controlla(?:re)? che|check (?:that|whether|if)|verificare|verify (?:that|whether|if)|to verify|per verificare|spero|hope|potrebbe(?:ro)?|might|may|probabilmente|probably|try to|proviamo|prova a)\b/i;
+const NOT_A_CLAIM = /\b(?:se|if|quando|when|once|unless|finché|until|dopo che|prima che|before|whether|will|going to|let me|let's|I'll|we'll|vado a|devo|dobbiamo|dovrebbe(?:ro)?|should|need to|needs to|bisogna|occorre|make sure|assicur\w*|controlla(?:re)? che|check|controllo|verificare|verify (?:that|whether|if)|to verify|per verificare|spero|hope|potrebbe(?:ro)?|might|may|probabilmente|probably|try to|proviamo|prova a|come|how|what|cosa|perché|why)\b/i;
+// subito dopo il verbo: "created nothing", "risolto niente"
+const EMPTY_AFTER = /^\s*(?:nothing|anything|niente|nulla|no\b)/i;
 const NEGATION = /\b(?:non|not|never|mai|nessun\w*|neither|nor)\b|n't\b/i;
 
 function sentences(text) {
@@ -223,6 +234,8 @@ function extractClaims(text) {
       if (!m) continue;
       const before = sent.slice(0, m.index), near = sent.slice(Math.max(0, m.index - 30), m.index + m[0].length);
       if (NOT_A_CLAIM.test(before) || NOT_A_CLAIM.test(m[0]) || NEGATION.test(near)) continue;
+      if (EMPTY_AFTER.test(sent.slice(m.index + m[0].length))) continue;
+      if (/[«"“`']\s*$/.test(before)) continue; // una parola tra virgolette è citata, non affermata
       kinds.push(kind);
       const p = (kind === 'fixed' || kind === 'created') ? pathsInReply(sent.slice(m.index))[0] : null;
       out.push({ kind, text: sent.slice(0, 200), file: p ? p.path : null });
@@ -249,7 +262,8 @@ function judgeClaim(c, steps, from, to, fileKey) {
     case 'verified': return verdict(after.filter(s => s.act === 'verify' || s.act === 'run'));
     case 'fixed': case 'created': {
       const base = fileKey ? fileKey.slice(fileKey.lastIndexOf('/') + 1).toLowerCase() : null;
-      const pool = fileKey ? edits.filter(s => s.target === fileKey || String(s.target || '').toLowerCase().endsWith('/' + base) || String(s.target || '').toLowerCase() === base) : edits;
+      // senza un file citato vale anche uno strumento esterno riuscito (es. un ticket creato via MCP)
+      const pool = fileKey ? edits.filter(s => s.target === fileKey || String(s.target || '').toLowerCase().endsWith('/' + base) || String(s.target || '').toLowerCase() === base) : turn.filter(s => s.act === 'edit' || s.act === 'tool');
       if (pool.some(s => !s.err)) return { status: pool[pool.length - 1].err ? 'contradicted' : 'grounded', step: pool[pool.length - 1] };
       return verdict(pool);
     }

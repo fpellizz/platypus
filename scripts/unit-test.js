@@ -184,6 +184,13 @@ function ghostTests(ok) {
       const r = grounding.findGhosts(sess({ cwd: dir }), [a, b], dir);
       ok(r.ghosts.length === 1 && r.ghosts[0].key === 'src/auth/fake.ts' && r.ghosts[0].source === 'reply', 'risposta: solo il file che non c\'è e che nessuno ha creato');
       ok(!grounding.findGhosts(sess({ cwd: dir }), [a, b], dir, { replay: true }).ghosts.length, 'replay: le risposte non si controllano sul disco');
+      // agenti che lavorano in un worktree di Claude Code: i percorsi sono relativi al worktree
+      fs.mkdirSync(path.join(dir, '.claude', 'worktrees', 'wt1', 'frontend', 'src'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.claude', 'worktrees', 'wt1', 'frontend', 'src', 'app.css'), 'x');
+      const w = agent('w', 'WORKER');
+      w.world.reply(7000, 'Ho aggiornato frontend/src/app.css e frontend/src/manca.css.');
+      const rw = grounding.findGhosts(sess({ cwd: dir }), [w], dir).ghosts.map(g => g.key);
+      ok(!rw.includes('frontend/src/app.css') && rw.includes('frontend/src/manca.css'), 'percorsi di un worktree di Claude Code: esistono, non sono fantasmi');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 }
@@ -215,6 +222,14 @@ function claimTests(ok) {
     ['Once tests pass, we can ship.', []],
     ['It should work now.', []],
     ["Non funziona ancora.", []],
+    // tipi di frase trovati nella prova sulle sessioni vere (D2), riscritti con esempi inventati
+    ['La soluzione proposta in `src/utils/date.ts` è corretta.', []],
+    ['Riepilogo: come funziona la cache delle sessioni', []],
+    ['The request that failed created nothing.', []],
+    ['Now check the flag already confirmed in Settings.java.', []],
+    ['Va bene come idea, ma «confermato» è una parola forte.', []],
+    ['Il bug del login è stato risolto.', ['fixed']],
+    ['Ho già sistemato `src/a.ts`.', ['fixed']],
     ['```\n// tests pass, done\n```', []],
   ];
   for (const [text, want] of cases) {
@@ -247,6 +262,12 @@ function claimTests(ok) {
   a.mind.goals.push({ t: 8000 });
   c = claimsAt(a, 'Ho verificato, funziona.', 9000);
   ok(c[0] && c[0].kind === 'verified' && c[0].status === 'ungrounded', 'nuovo turno: le prove del turno precedente non contano');
+  // "creati" senza file: vale uno strumento esterno riuscito nel turno (ticket via MCP)
+  const mc = { id: 'main', name: 'CLAUDE', world: new AgentWorld(), mind: { goals: [{ t: 100 }] } };
+  mc.world.start('m1', 'mcp__jira__create_issue', { summary: 'x' }, 1000, '/p', 0); mc.world.end('m1', false, { content: 'ok' }, {}, 1100, '/p');
+  mc.world.reply(2000, 'All 12 are created.');
+  const mcc = grounding.checkClaims({}, [mc], '/p').claims[0];
+  ok(mcc && mcc.kind === 'created' && mcc.status === 'grounded', 'creati senza file: ancorata da uno strumento esterno riuscito');
   const sc = grounding.checkClaims({}, [a], '/p').score;
   ok(sc && sc.total >= 5 && sc.pct === Math.round(100 * sc.grounded / sc.total), `indice di ancoraggio: ${sc ? sc.pct + '% su ' + sc.total : '-'}`);
 }
