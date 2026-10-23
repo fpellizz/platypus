@@ -235,6 +235,7 @@ class AgentWorld {
     if (!step) return;
     this.open.delete(id);
     step.err = !!isErr;
+    step.dur = Math.max(0, t - step.t);
     if (!isErr) {
       const text = resultText(block, line);
       const r = line && line.toolUseResult;

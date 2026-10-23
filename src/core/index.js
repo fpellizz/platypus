@@ -11,6 +11,8 @@
 //   POST /api/focus          {sid}   porta in primo piano la finestra della sessione
 //   POST /api/resume         {key}   riprende una sessione chiusa in un nuovo terminale
 //   POST /api/open-folder    {sid|key}
+//   GET  /api/bottega        {sid|cwd}  il Libro della bottega del progetto (lezioni dedotte dai fatti)
+//   POST /api/bottega        {sid|cwd, action: pin|ignore|unignore|forget, id}
 //   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca, percorsi inventati, affermazioni, sorprese
 
 const { dataDir } = require('../paths');
@@ -23,6 +25,7 @@ const worldmap = require('./worldmap');
 const semantic = require('./semantic');
 const grounding = require('./grounding');
 const surprise = require('./surprise');
+const { Bottega } = require('./bottega');
 const { TranscriptWatcher, SessionRegistry, claudeDir, findCoworkBases } = require('./sources');
 const { Weather } = require('./weather');
 const { describeTool } = require('./describe');
@@ -43,11 +46,12 @@ function defaultSettingsPath() { return path.join(dataDir(), 'settings.json'); }
 function loadSettings(p) { try { return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(p, 'utf8')) }; } catch { return { ...DEFAULT_SETTINGS }; } }
 function saveSettings(p, s) { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, JSON.stringify(s, null, 2)); } catch {} }
 
-function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPath = defaultSettingsPath(), statsPath, fetch: fetchImpl, osLocale } = {}) {
+function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPath = defaultSettingsPath(), statsPath, bottegaDir, fetch: fetchImpl, osLocale } = {}) {
   const initialSettings = loadSettings(settingsPath);
   i18n.setLang(i18n.resolveLang(initialSettings.lang, osLocale));
   const state = new OfficeState({ settings: initialSettings });
   const stats = new Stats(state, statsPath || path.join(path.dirname(settingsPath), 'stats.json'));
+  const bottega = new Bottega(bottegaDir || path.join(path.dirname(settingsPath), 'bottega'));
   state.includeCowork = !!includeCowork;
   const watcher = new TranscriptWatcher(state, { base });
   const registry = new SessionRegistry(state, watcher, { base });
@@ -233,6 +237,13 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
+  // la cartella del progetto: dalla sessione (anche in replay) o passata direttamente
+  function projectCwd(q) {
+    const sid = q.sid || '';
+    const s = sid && (state.sessions.get(sid) || (replay && replay.state.sessions.get(sid)));
+    return s ? s.cwd : (typeof q.cwd === 'string' ? q.cwd.slice(0, 500) : '');
+  }
+
   function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); }
   function liveIds() { return new Set([...state.sessions.values()].filter(s => !s.ended).map(s => s.id)); }
 
@@ -275,6 +286,12 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
       case '/api/cowork':
         state.setIncludeCowork(typeof j.on === 'boolean' ? j.on : !state.includeCowork);
         return json(res, 200, { includeCowork: state.includeCowork });
+      case '/api/bottega': {
+        const cwd = projectCwd(j);
+        if (!cwd) return json(res, 404, { ok: false });
+        const ok = bottega.act(cwd, String(j.action || ''), String(j.id || ''));
+        return json(res, ok ? 200 : 404, { ok });
+      }
       case '/api/demo': {
         const on = typeof j.on === 'boolean' ? j.on : !demo.on;
         on ? demo.start() : demo.stop();
@@ -372,6 +389,10 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     if (url.pathname === '/api/agentmap') return json(res, 200, agentMap(url.searchParams));
     if (url.pathname === '/api/agentmind') return json(res, 200, agentMind(url.searchParams));
     if (url.pathname === '/api/grounding') return json(res, 200, agentGrounding(url.searchParams));
+    if (url.pathname === '/api/bottega') {
+      const cwd = projectCwd(Object.fromEntries(url.searchParams));
+      return cwd ? json(res, 200, { ok: true, ...bottega.view(cwd) }) : json(res, 404, { ok: false });
+    }
     if (url.pathname === '/api/stats/costs') return json(res, 200, stats.costHistory(Math.min(90, Number(url.searchParams.get('days')) || 14)));
     if (url.pathname === '/api/stats/honors') return json(res, 200, stats.honors());
     if (url.pathname === '/api/report') {
@@ -419,12 +440,13 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     for (const id of [...approvals.keys()]) finishApproval(id, null);
     if (replay) replay.stop();
     stats.stop();
+    bottega.stop();
     state.stop();
     for (const c of clients) try { c.end(); } catch {}
     server.close();
   }
 
-  return { state, stats, demo, server, ready, stop, port, base: base || claudeDir(), hooks: {
+  return { state, stats, bottega, demo, server, ready, stop, port, base: base || claudeDir(), hooks: {
     install: () => hooks.install({ port, base }),
     uninstall: () => hooks.uninstall({ base }),
     status: () => hooks.status({ base }),

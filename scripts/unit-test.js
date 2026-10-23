@@ -382,7 +382,75 @@ function surpriseTests(ok) {
   ok(fi && fi.follows === 1 && fi.judged === 1 && fi.complete === 1 && fi.chains === 1 && ei && ei.follows === 0 && ei.judged === 1 && ei.complete === 0, 'indicatori: segue la traccia X/Y, catene complete X/Y');
 }
 
+// Libro della bottega (C1): chiave del progetto, casi dedotti dai fatti, peso, azioni, salvataggio
+function bottegaTests(ok) {
+  const bt = require(path.join(ROOT, 'src', 'core', 'bottega'));
+  ok(bt.projectKey('C:\\Progetti\\Portale\\') === bt.projectKey('c:/progetti/portale'), 'chiave del progetto: stessa cartella scritta in modi diversi');
+  const pat = bt.errorPattern("TypeError: Cannot read properties of undefined (reading 'exp') at src/a.ts:42:7");
+  ok(pat === 'TypeError: Cannot read properties of undefined (reading <…>) at <path>:N:N', 'schema d\'errore senza percorsi, numeri e contenuti: ' + pat);
+  const sh = (w, cmd, t, err, out) => { const id = 'b' + (++seq); w.start(id, 'Bash', { command: cmd }, t, '/p', 0); w.end(id, err, { content: out }, {}, t + 100, '/p'); };
+  const a = agent('a', 'TEST-RUNNER'), b = agent('b', 'CLAUDE');
+  // instabile: passa, fallisce, ripassa senza modifiche in mezzo
+  sh(a.world, 'npm run test:e2e', 1000, false, 'ok');
+  sh(a.world, 'npm run test:e2e', 2000, true, 'FAIL tests/e2e/login.spec.ts');
+  sh(a.world, 'npm run test:e2e', 3000, false, 'ok');
+  // catena completa: errore che cita refresh.ts, modifica, di nuovo verde
+  sh(a.world, 'npm test', 4000, false, 'Tests: 3 passed');
+  sh(a.world, 'npm test', 5000, true, "FAIL\n    TypeError: Cannot read properties of undefined (reading 'exp')\n      at renew (src/auth/refresh.ts:42:18)");
+  act(a.world, 'Edit', 'src/auth/refresh.ts', 6000);
+  sh(a.world, 'npm test', 7000, false, 'Tests: 3 passed');
+  // trappola: lo stesso comando che fallisce due volte di fila
+  sh(b.world, 'npx tsc --noEmit', 1000, true, "src/x.ts(1,1): error TS1005: ';' expected.");
+  sh(b.world, 'npx tsc --noEmit', 2000, true, "src/x.ts(1,1): error TS1005: ';' expected.");
+  sh(b.world, 'npx tsc --noEmit', 3000, true, "src/x.ts(1,1): error TS1005: ';' expected.");
+  // percorso inventato, file conteso (letto da uno, cambiato dall'altro), passo lento
+  act(b.world, 'Read', 'src/auth/oldToken.ts', 4000, { err: true, out: 'File does not exist.' });
+  act(b.world, 'Read', 'src/auth/refresh.ts', 4500);
+  const slowId = 'b' + (++seq);
+  b.world.start(slowId, 'Bash', { command: 'npm run build' }, 10000, '/p', 0);
+  b.world.end(slowId, false, { content: 'done' }, {}, 10000 + 7 * 60000, '/p');
+  const sess = { id: 's1', cwd: '/p', kind: 'code' };
+  const recent = Date.now() - 3 * 86400000; // i passi finti partono dal 1970: li spostiamo a tre giorni fa
+  const cases = bt.digest(sess, [a, b]).map(c => ({ ...c, t: recent + c.t }));
+  const kinds = new Set(cases.map(c => c.kind));
+  for (const k of bt.KINDS) ok(kinds.has(k), `dai fatti della sessione: ${k}`);
+  ok(cases.some(c => c.kind === 'known-fix' && /→ src\/auth\/refresh\.ts$/.test(c.key)), 'correzione nota: schema d\'errore → file corretto');
+  ok(cases.some(c => c.kind === 'loop-trap' && c.key === 'npx tsc --noEmit'), 'trappola: il comando intero, non la sua etichetta');
+  // il libro, in una cartella temporanea
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-bottega-'));
+  try {
+    const book = new bt.Bottega(dir);
+    const n1 = book.learn('/p', cases);
+    ok(n1 === cases.length && book.learn('/p', cases) === 0, 'gli stessi casi non contano due volte');
+    const cases2 = bt.digest({ id: 's2', cwd: '/p', kind: 'code' }, [a, b]).map(c => ({ ...c, sid: 's2', t: recent + c.t + 86400000 }));
+    book.learn('/p', cases2);
+    let v = book.view('/p');
+    const flaky = v.lessons.find(l => l.kind === 'flaky-command');
+    ok(flaky && flaky.sessions.length === 2 && flaky.level === 'lesson' && /npm run test:e2e/.test(flaky.title), `lezione da due sessioni: «${flaky && flaky.title}» (peso ${flaky && flaky.weight})`);
+    const once = new bt.Bottega(dir);
+    once.learn('/q', [{ kind: 'ghost-path', key: 'src/old.ts', sid: 'x', t: Date.now(), agent: 'A', excerpt: '' }]);
+    ok(once.view('/q').lessons[0].level === 'observation', 'un caso solo resta un\'osservazione');
+    const l0 = { count: 4, sessions: ['a', 'b'], last: Date.now() - 60 * 86400000, pinned: false };
+    ok(Math.abs(bt.weightOf(l0) - bt.weightOf({ ...l0, last: Date.now() }) / 4) < 0.01, 'il peso si dimezza ogni 30 giorni');
+    ok(bt.weightOf({ ...l0, pinned: true }) === bt.weightOf({ ...l0, last: Date.now() }), 'una lezione fissata non sbiadisce');
+    ok(book.act('/p', 'pin', flaky.id) && book.view('/p').lessons[0].id === flaky.id, 'fissata: va in cima');
+    ok(book.act('/p', 'ignore', flaky.id) && book.view('/p').lessons.find(l => l.id === flaky.id).ignored, 'ignorata');
+    const ghost = v.lessons.find(l => l.kind === 'ghost-path');
+    ok(book.act('/p', 'forget', ghost.id) && !book.view('/p').lessons.some(l => l.id === ghost.id), 'dimenticata');
+    ok(!book.act('/p', 'boh', flaky.id), 'azione sconosciuta: rifiutata');
+    book.stop(); once.stop();
+    const again = new bt.Bottega(dir);
+    v = again.view('/p');
+    ok(v.lessons.length > 0 && v.lessons.length === book.view('/p').lessons.length, `salvato su disco e riletto (${v.lessons.length} lezioni)`);
+    ok(v.lessons.find(l => l.id === flaky.id).ignored && !v.lessons.some(l => l.id === ghost.id), 'riletto con fissate, ignorate e dimenticate');
+    ok(fs.readdirSync(dir).every(f => /^[0-9a-f]{16}\.json$/.test(f)), 'un file per progetto, con la chiave come nome');
+    again.stop();
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
 function run(ok) {
+  console.log('libro della bottega');
+  bottegaTests(ok);
   console.log('sorprese');
   surpriseTests(ok);
   console.log('mappa contro territorio');

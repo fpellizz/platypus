@@ -87,6 +87,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(sc.ok && !sc.blindEdits.some(b => b.agent === 'main' && b.key === 'src/auth/refresh.ts'), 'scenario: CLAUDE rilegge refresh.ts prima di modificarlo (niente modifica alla cieca)');
   ok(sc.ok && Array.isArray(sc.surprises) && sc.surprises.some(x => x.value >= 0.5 && x.kind === 'test'), `sorprese sul piano 1: ${sc.surprises ? sc.surprises.length : 0} (anche il test e2e che si incastra)`);
   ok(sc.ok && sc.surprises.some(x => x.kind === 'test' && x.reaction === 'insists') && Array.isArray(sc.reactions), 'il test-runner bloccato insiste sullo stesso comando');
+  const bk = p1 ? JSON.parse((await get(port, `/api/bottega?sid=${p1.id}`)).body) : {};
+  ok(bk.ok && Array.isArray(bk.lessons) && /^[0-9a-f]{16}$/.test(bk.key), `libro della bottega del piano 1: ${bk.lessons ? bk.lessons.length : '-'} lezioni`);
+  const bk404 = p1 ? await get(port, '/api/bottega', 'POST', JSON.stringify({ sid: p1.id, action: 'pin', id: 'nessuna' })) : { status: 0 };
+  ok(bk404.status === 404, 'azione su una lezione che non c\'è → ' + bk404.status);
   // scenario della sorpresa: catena completa e un agente che cerca altrove
   const chain = sc.ok ? sc.surprises.find(x => x.refs && x.refs.some(r => r.file === 'src/auth/refresh.ts' && r.line === 42)) : null;
   ok(chain && chain.value === 1 && chain.reasons.includes('usedToWork') && !chain.reasons.includes('tdd'), `scenario: il test che prima passava fallisce, sorpresa forte (${chain ? Math.round(chain.value * 100) + '%' : '-'})`);
