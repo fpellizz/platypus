@@ -192,6 +192,7 @@ class OfficeState extends EventEmitter {
         demo: false,
         main: newAgent('main', 'main', t),
         subs: new Map(),
+        quietDone: new Map(),    // sottoagenti dati per finiti dal solo silenzio: se riscrivono tornano gli stessi
         pendingTools: new Map(), // toolUseId -> {name, input, agentId}
         spawns: new Map(),       // toolUseId (Agent/Task) -> {type, description, prompt, parent}
         completed: 0,
@@ -246,6 +247,11 @@ class OfficeState extends EventEmitter {
 
   ensureSub(s, agentId, meta, quiet, ts) {
     let a = s.subs.get(agentId);
+    if (!a && s.quietDone.has(agentId)) { // era solo zitto: torna lo stesso agente, non uno nuovo
+      a = s.quietDone.get(agentId);
+      s.quietDone.delete(agentId);
+      s.subs.set(agentId, a);
+    }
     if (!a) {
       a = newAgent(agentId, 'sub', ts || this.now());
       s.subs.set(agentId, a);
@@ -285,18 +291,34 @@ class OfficeState extends EventEmitter {
     if (meta.finished && !a.finished) this.finishSub(s, a, tr('Ha finito!'), !a._live);
   }
 
-  finishSub(s, a, msg, quiet) {
+  // byQuiet: dedotto dal silenzio, non detto da Claude Code (se il sottoagente riscrive, riprende)
+  finishSub(s, a, msg, quiet, byQuiet = false) {
     if (a.finished) return;
     const t = this.now();
     a.finished = true;
     a.finishedAt = quiet ? t - CFG.doneLingerMs : t;
+    a.byQuiet = byQuiet;
     a.status = 'done';
     a.action = msg || tr('Ha finito!');
     a.pending = 0;
-    s.completed++;
-    s.completedByType[a.type] = (s.completedByType[a.type] || 0) + 1;
-    if (a._live || s.demo) { this.sample(s); s.histCur.d++; }
+    // un compito si conta una volta sola, anche se il sottoagente era stato dato per finito e poi ha ripreso
+    if (!a.counted) {
+      a.counted = true;
+      s.completed++;
+      s.completedByType[a.type] = (s.completedByType[a.type] || 0) + 1;
+      if (a._live || s.demo) { this.sample(s); s.histCur.d++; }
+    }
     if (!quiet) this.addLog(s, a.description ? tr('{agent} ha finito: {task}', { agent: displayName(a), task: clip(a.description, 40) }) : tr('{agent} ha finito', { agent: displayName(a) }), 'done');
+  }
+
+  // un sottoagente dato per finito dal silenzio scrive di nuovo: stava solo pensando a lungo
+  resumeSub(a, ts) {
+    a.finished = false;
+    a.finishedAt = 0;
+    a.byQuiet = false;
+    a.status = 'thinking';
+    a.statusSince = ts || this.now();
+    a.action = tr('Riprende il lavoro');
   }
 
   setAgent(a, status, action, ts) {
@@ -513,6 +535,7 @@ class OfficeState extends EventEmitter {
     const a = agentId ? this.ensureSub(s, agentId, opts.meta, opts.replay, ts) : s.main;
     const msg = line.message || {};
     if (type === 'assistant') { this.addTokens(s, a, msg.usage, msg.id || line.requestId, ts); noteModel(a, line); }
+    if (a.finished && a.byQuiet) this.resumeSub(a, ts);
     if (a.finished) return;
     if (live) a._live = true;
     const content = msg.content;
@@ -769,7 +792,10 @@ class OfficeState extends EventEmitter {
     for (const s of [...this.sessions.values()]) {
       for (const [id, a] of [...s.subs]) {
         if (a.finished) {
-          if (t - a.finishedAt > CFG.doneLingerMs) { s.subs.delete(id); changed = true; }
+          if (t - a.finishedAt > CFG.doneLingerMs) {
+            s.subs.delete(id); changed = true;
+            if (a.byQuiet) { s.quietDone.set(id, a); if (s.quietDone.size > 100) s.quietDone.delete(s.quietDone.keys().next().value); }
+          }
           continue;
         }
         if (s.demo) continue;
@@ -781,7 +807,7 @@ class OfficeState extends EventEmitter {
           else if (idle > CFG.subQuietMs) done = true;
         } else if (idle > CFG.subStuckMs) done = true;
         // chi non abbiamo mai visto lavorare dal vivo esce senza animazione (ricostruzione all'avvio)
-        if (done) { this.finishSub(s, a, tr('Ha finito!'), idle > CFG.subSilentRemoveMs || !a._live); changed = true; }
+        if (done) { this.finishSub(s, a, tr('Ha finito!'), idle > CFG.subSilentRemoveMs || !a._live, true); changed = true; }
       }
       // fine sessione
       if (s.ended && t - s.endedAt > CFG.endedLingerMs) { this.retire(s); changed = true; continue; }
