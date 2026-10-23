@@ -67,6 +67,8 @@ function relKey(p, cwd) {
   if (!x) return null;
   if (/^https?:\/\//i.test(x)) return webKey(x);
   const c = normSlashes(cwd);
+  // Git Bash su Windows (la shell di Claude Code): /d/dev/x e /cygdrive/d/dev/x sono D:/dev/x
+  if (/^[A-Za-z]:\//.test(c)) { const m = /^\/(?:cygdrive\/)?([A-Za-z])(?:\/|$)/.exec(x); if (m) x = m[1].toUpperCase() + ':/' + x.slice(m[0].length); }
   if (c && (x.toLowerCase() === c.toLowerCase())) return '.';
   if (c && x.toLowerCase().startsWith(c.toLowerCase() + '/')) return x.slice(c.length + 1);
   if (/^([A-Za-z]:\/|\/|~)/.test(x)) return 'abs:' + x;
@@ -239,8 +241,9 @@ class AgentWorld {
     if (!isErr) {
       const text = resultText(block, line);
       const r = line && line.toolUseResult;
-      const reset = /Shell cwd was reset to (\S+)/.exec(text);
-      if (reset) this.shellCwd = normSlashes(reset[1]);
+      // fino a fine riga: la cartella può avere spazi (es. C:\Users\Mario Rossi\shop)
+      const reset = /Shell cwd was reset to ([^\r\n]+)/.exec(text);
+      if (reset) this.shellCwd = normSlashes(reset[1].trim());
       // gli elenchi di Grep/Glob hanno percorsi assoluti o già comprensivi della cartella cercata
       if (step.act === 'search') for (const p of listedPaths(text, r)) this.touch(relKey(p, cwd), LV.seen, t);
       else if (step.act === 'read' && step.target && !step.target.startsWith('web:')) {

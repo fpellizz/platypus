@@ -138,13 +138,22 @@ function safeDir(d) {
   return typeof d === 'string' && d.length < 500 && !/["\r\n`$]/.test(d) && fs.existsSync(d);
 }
 
+// argomenti per "cmd.exe" che lancia prog sulla cartella (serve a code.cmd, che senza cmd non parte):
+// la cartella tra virgolette, così & | < > ^ restano lettere; "%" cmd lo espande anche tra virgolette,
+// quindi una cartella con "%" non passa (null). Da usare con windowsVerbatimArguments.
+function cmdArgs(prog, dir) {
+  if (!safeDir(dir) || dir.includes('%')) return null;
+  return ['/d', '/s', '/c', `"${prog} "${dir}""`];
+}
+
 async function focusSession({ pid, kind, cwd }) {
   if (process.platform === 'win32') {
     const names = WIN_NAMES[kind] || WIN_NAMES.unknown;
     const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', psEncoded(focusScriptWin(pid, names, winMatch(cwd)))]);
     if (r.out.startsWith('OK:')) return { ok: true, how: 'window', app: r.out.slice(3) };
     // l'IDE si può sempre richiamare sulla cartella del progetto
-    if (kind === 'ide' && safeDir(cwd)) { spawn('cmd.exe', ['/c', 'code', cwd], { detached: true, windowsHide: true, stdio: 'ignore' }).unref(); return { ok: true, how: 'ide' }; }
+    const ide = kind === 'ide' ? cmdArgs('code', cwd) : null;
+    if (ide) { spawn('cmd.exe', ide, { detached: true, windowsHide: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref(); return { ok: true, how: 'ide' }; }
     if (r.out.startsWith('NAME:')) return { ok: true, how: 'app', app: r.out.slice(5), approx: true };
     return { ok: false, reason: tr('Non ho trovato la finestra di questa sessione.') };
   }
@@ -307,4 +316,4 @@ function openFolder(cwd) {
   return { ok: true };
 }
 
-module.exports = { focusSession, resumeSession, openFolder, focusScriptWin };
+module.exports = { focusSession, resumeSession, openFolder, focusScriptWin, cmdArgs };
