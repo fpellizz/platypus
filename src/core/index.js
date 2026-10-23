@@ -13,6 +13,7 @@
 //   POST /api/open-folder    {sid|key}
 //   GET  /api/bottega        {sid|cwd}  il Libro della bottega del progetto (lezioni dedotte dai fatti)
 //   POST /api/bottega        {sid|cwd, action: pin|ignore|unignore|forget, id}
+//   POST /api/bottega/learn  {sid|cwd}  impara dalle sessioni passate del progetto (in background)
 //   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca, percorsi inventati, affermazioni, sorprese
 
 const { dataDir } = require('../paths');
@@ -303,6 +304,12 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
       case '/api/cowork':
         state.setIncludeCowork(typeof j.on === 'boolean' ? j.on : !state.includeCowork);
         return json(res, 200, { includeCowork: state.includeCowork });
+      case '/api/bottega/learn': {
+        const cwd = projectCwd(j);
+        if (!cwd) return json(res, 404, { ok: false });
+        const job = bottega.learnFromArchive(cwd, { base, settings: state.settings, liveIds: liveIds() });
+        return json(res, 200, { ok: true, learning: { running: job.running, total: job.total, done: job.done } });
+      }
       case '/api/bottega': {
         const cwd = projectCwd(j);
         if (!cwd) return json(res, 404, { ok: false });

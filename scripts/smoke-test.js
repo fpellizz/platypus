@@ -70,6 +70,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     asst(5, 't3', 'Bash', { command: 'npm test' }), res(6, 't3', true, 'FAIL src/a.test.ts\nTests: 1 failed'),
     asst(7, 't4', 'Bash', { command: 'npm test' }), res(8, 't4', true, 'FAIL src/a.test.ts\nTests: 1 failed'),
   ].map(o => JSON.stringify(o)).join('\n') + '\n');
+  // una sessione passata dello stesso progetto (file di tre giorni fa: è in archivio, non aperta)
+  const oldFile = path.join(fakeDir, 'bottega-smoke-0000.jsonl');
+  const T1 = Date.now() - 3 * 86400000, at1 = k => new Date(T1 + k * 1000).toISOString();
+  fs.writeFileSync(oldFile, [
+    { type: 'user', timestamp: at1(0), sessionId: 'bottega-smoke-0000', cwd: fakeCwd, message: { role: 'user', content: 'Aggiorna i test' } },
+    { type: 'assistant', timestamp: at1(1), sessionId: 'bottega-smoke-0000', cwd: fakeCwd, message: { id: 'o1', role: 'assistant', content: [{ type: 'tool_use', id: 'o1', name: 'Read', input: { file_path: path.join(fakeCwd, 'src', 'vecchio.ts') } }], usage: { input_tokens: 10, output_tokens: 10 } } },
+    { type: 'user', timestamp: at1(2), sessionId: 'bottega-smoke-0000', cwd: fakeCwd, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'o1', is_error: true, content: 'File does not exist.' }] } },
+  ].map(o => JSON.stringify(o)).join('\n') + '\n');
+  fs.utimesSync(oldFile, new Date(T1), new Date(T1));
   const { startCore } = require(path.join(ROOT, 'src', 'core'));
   const port = 47900 + Math.floor(Math.random() * 90);
   const core = startCore({ port, base, settingsPath: path.join(tmp, 'settings.json'), statsPath: path.join(tmp, 'stats.json'), fetch: async () => { throw new Error('offline'); } });
@@ -110,6 +119,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const kindsFk = new Set((fk.lessons || []).map(l => l.kind));
   ok(learned > 0 && kindsFk.has('ghost-path') && kindsFk.has('loop-trap') && kindsFk.has('flaky-command'), `il libro impara da una sessione aperta: ${learned} casi, ${[...kindsFk].join(', ')}`);
   ok(core.learnLive() === 0, 'imparare di nuovo dalla stessa sessione non aggiunge nulla');
+  // dall'archivio, in background: la sessione aperta si salta, quella passata si legge una volta sola
+  const lr = JSON.parse((await get(port, '/api/bottega/learn', 'POST', JSON.stringify({ cwd: fakeCwd }))).body);
+  let fk2 = {};
+  for (let k = 0; k < 40; k++) { await sleep(100); fk2 = JSON.parse((await get(port, '/api/bottega?cwd=' + encodeURIComponent(fakeCwd))).body); if (fk2.learning && !fk2.learning.running) break; }
+  const gl = (fk2.lessons || []).find(l => l.kind === 'ghost-path');
+  ok(lr.ok && lr.learning.total === 1 && fk2.learnedSessions === 1 && gl && gl.sessions.length === 2 && gl.level === 'lesson', `imparare dall'archivio: ${fk2.learnedSessions} sessione letta, il percorso inventato ora è una lezione (${gl ? gl.sessions.length : 0} sessioni)`);
+  const lr2 = JSON.parse((await get(port, '/api/bottega/learn', 'POST', JSON.stringify({ cwd: fakeCwd }))).body);
+  ok(lr2.ok && lr2.learning.total === 0, 'una sessione già letta e non cambiata non si rilegge');
   const bkDemo = JSON.parse((await get(port, `/api/bottega?sid=${p1.id}`)).body);
   ok(bkDemo.ok && bkDemo.lessons.length === 0, 'la demo non scrive nel libro');
   // scenario della sorpresa: catena completa e un agente che cerca altrove

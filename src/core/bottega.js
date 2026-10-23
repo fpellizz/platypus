@@ -115,7 +115,7 @@ class Bottega {
     for (const b of this.books.values()) {
       if (!b.dirty) continue;
       b.dirty = false;
-      const { dirty, ...data } = b;
+      const { dirty, job, ...data } = b;
       try { fs.mkdirSync(this.dir, { recursive: true }); fs.writeFileSync(path.join(this.dir, b.key + '.json'), JSON.stringify(data)); } catch {}
     }
   }
@@ -173,7 +173,51 @@ class Bottega {
       const { seen, ...rest } = l;
       return { ...rest, weight: Math.round(weight * 100) / 100, level: l.pinned || (l.count > 1 && weight >= LESSON_WEIGHT) ? 'lesson' : 'observation', ...describe(l) };
     }).sort((x, y) => (y.pinned - x.pinned) || (y.weight - x.weight));
-    return { key: b.key, name: b.name, cwd: b.cwd, learned: b.learned, lessons };
+    const job = b.job ? { running: b.job.running, total: b.job.total, done: b.job.done, cases: b.job.cases, error: b.job.error } : null;
+    return { key: b.key, name: b.name, cwd: b.cwd, learnedSessions: Object.keys(b.learned || {}).length, learning: job, lessons };
+  }
+
+  // rilegge le sessioni passate del progetto (non quelle aperte, né quelle già lette e non cambiate)
+  // con un OfficeState senza interfaccia, a blocchi, senza mai bloccare il server
+  learnFromArchive(cwd, { base, settings, liveIds = new Set(), chunk = 1500 } = {}) {
+    const b = this.book(cwd);
+    if (b.job && b.job.running) return b.job;
+    const { listArchive, findSessionFile, loadEvents } = require('./archive');
+    const { OfficeState, displayName } = require('./state');
+    const todo = listArchive({ base, limit: 400, liveIds }).filter(x => x.cwd && projectKey(x.cwd) === b.key && !x.live && (b.learned || {})[x.id] !== x.end);
+    const job = b.job = { running: true, total: todo.length, done: 0, cases: 0, error: '' };
+    const finish1 = (info, st) => { if (st) try { st.stop(); } catch {} if (info) { b.learned = b.learned || {}; b.learned[info.id] = info.end; b.dirty = true; } job.done++; setImmediate(next); };
+    const next = () => {
+      const info = todo.shift();
+      if (!info) { job.running = false; return; }
+      let st = null;
+      try {
+        const file = findSessionFile(base, info.key);
+        const { id, events } = loadEvents(file);
+        let vt = events.length ? events[0].ts : 0, i = 0;
+        st = new OfficeState({ manual: true, noTimeout: true, clock: () => vt, settings });
+        const feed = () => {
+          try {
+            for (const end = Math.min(events.length, i + chunk); i < end; i++) {
+              const e = events[i];
+              vt = e.ts;
+              st.applyTranscriptLine(id, e.agentId, e.line, { meta: e.meta ? { ...e.meta } : null });
+            }
+            if (i < events.length) return setImmediate(feed);
+            const s = st.sessions.get(id);
+            if (s) {
+              const agents = [s.main, ...s.subs.values()].filter(a => a.world).map(a => ({ id: a.id, name: displayName(a), world: a.world, mind: a.mind }));
+              // "adesso" è la fine della sessione: una sorpresa all'ultimo passo non resta "in corso"
+              job.cases += this.learn(cwd, digest(s, agents, vt + 120000));
+            }
+            finish1(info, st);
+          } catch (e) { job.error = String(e && e.message || e); finish1(null, st); }
+        };
+        feed();
+      } catch (e) { job.error = String(e && e.message || e); finish1(null, st); }
+    };
+    setImmediate(next);
+    return job;
   }
 }
 
