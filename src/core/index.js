@@ -11,7 +11,7 @@
 //   POST /api/focus          {sid}   porta in primo piano la finestra della sessione
 //   POST /api/resume         {key}   riprende una sessione chiusa in un nuovo terminale
 //   POST /api/open-folder    {sid|key}
-//   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca, percorsi inventati
+//   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca, percorsi inventati, affermazioni
 
 const { dataDir } = require('../paths');
 const http = require('http');
@@ -224,11 +224,11 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     const s = st && st.sessions.get(q.get('sid') || '');
     if (!s) return { ok: false };
     const aid = q.get('aid') || 'main';
-    const agents = [s.main, ...s.subs.values()].filter(a => a.world).map(a => ({ id: a.id, name: displayName(a), world: a.world }));
+    const agents = [s.main, ...s.subs.values()].filter(a => a.world).map(a => ({ id: a.id, name: displayName(a), world: a.world, mind: a.mind }));
     const only = aid === 'all' ? null : new Set([aid]);
     try {
       const opts = { only, replay: isReplay };
-      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, opts), ...grounding.findGhosts(s, agents, s.cwd, opts), claims: [], score: null };
+      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, opts), ...grounding.findGhosts(s, agents, s.cwd, opts), ...grounding.checkClaims(s, agents, s.cwd, opts) };
     } catch (e) { return { ok: false, error: e.message }; }
   }
 

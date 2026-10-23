@@ -4,12 +4,14 @@
 //  - ricordi scaduti: un file che ha letto è poi cambiato e lui non l'ha più riletto;
 //  - modifiche alla cieca: modifica un file cambiato da un altro agente senza averlo riletto
 //    (o Claude Code gliela rifiuta perché il file è cambiato: presa in tempo);
-//  - percorsi inventati ("fantasmi"): file che cerca, apre o cita e che non esistono.
+//  - percorsi inventati ("fantasmi"): file che cerca, apre o cita e che non esistono;
+//  - affermazioni ("i test passano", "ho corretto X"): ancorate se c'è un fatto che le prova.
 // Tutto pigro: si calcola solo quando qualcuno lo chiede, e il disco si guarda al massimo ogni 10 s.
 
 const fs = require('fs');
 const path = require('path');
 const { isProjectFile, pathsInCommand, relKey, scanTree, EXT } = require('./worldmap');
+const { isTestCommand } = require('./releases');
 const { tr } = require('../i18n');
 
 const SLACK = 1500;      // ms di tolleranza tra l'esito di una lettura e l'mtime del file
@@ -192,4 +194,90 @@ function checkStale(session, agents, cwd, { only = null, replay = false } = {}) 
   return { stale: stale.slice(0, MAX_ITEMS), blindEdits: blindEdits.slice(0, MAX_ITEMS), disk: { checked: !!disk.stat, reason: disk.reason || '' } };
 }
 
-module.exports = { checkStale, findGhosts, pathsInReply, SLACK, DISK_TTL };
+// ---- affermazioni nelle risposte: regole semplici e leggibili, in italiano e inglese
+// Una frase è un'affermazione solo se dice che qualcosa È successo: niente domande, condizioni
+// ("se i test passano"), intenzioni ("ora verifico", "I'll run"), consigli ("make sure") o negazioni.
+const CLAIM_RULES = [
+  ['tests', /\b(?:all |tutti i )?tests? (?:now )?(?:pass(?:es|ed)?|are (?:all )?(?:passing|green)|(?:are )?green)\b|\ball green\b|\btutto verde\b|\bsuite (?:è )?verde\b|\b(?:i |tutti i )?test (?:ora )?(?:passano|sono (?:tutti )?(?:verdi|passati)|tornano verdi)\b/i],
+  ['verified', /\b(?:ho |l'ho |abbiamo )?verificat[oaie]\b|\b(?:I(?:'ve| have)? )?verified\b|\bconfermat[oaie]\b|\bconfirmed\b|\bfunziona(?:no)?\b|\b(?:it |now it |that )?works\b|\bis working\b/i],
+  ['fixed', /\b(?:ho |abbiamo |l'ho )?(?:corrett[oaie]|sistemat[oaie]|risolt[oaie]|fixat[oaie])\b|\b(?:I(?:'ve| have)? )?fixed\b|\bresolved\b/i],
+  ['created', /\b(?:ho |abbiamo )?(?:creat[oaie]|aggiunt[oaie])\b|\b(?:I(?:'ve| have)? )?(?:created|added)\b/i],
+  ['done', /\b(?:completat[oaie]|finit[oaie]|terminat[oaie])\b|(?<!\b(?:il|un|del|al|nel|dal|sul) )\bfatto\b|\b(?:done|completed|finished)\b/i],
+];
+const NOT_A_CLAIM = /\b(?:se|if|quando|when|once|unless|finché|until|dopo che|prima che|before|whether|will|going to|let me|let's|I'll|we'll|vado a|devo|dobbiamo|dovrebbe(?:ro)?|should|need to|needs to|bisogna|occorre|make sure|assicur\w*|controlla(?:re)? che|check (?:that|whether|if)|verificare|verify (?:that|whether|if)|to verify|per verificare|spero|hope|potrebbe(?:ro)?|might|may|probabilmente|probably|try to|proviamo|prova a)\b/i;
+const NEGATION = /\b(?:non|not|never|mai|nessun\w*|neither|nor)\b|n't\b/i;
+
+function sentences(text) {
+  const s = String(text || '').slice(0, 8000).replace(/```[\s\S]*?(```|$)/g, ' ');
+  return s.split(/(?<=[.!?…])\s+|\n+|(?:^|\s)[-*•]\s+/).map(x => x.trim()).filter(x => x.length > 2 && x.length < 400);
+}
+function extractClaims(text) {
+  const out = [];
+  for (const sent of sentences(text)) {
+    if (/\?\s*$/.test(sent)) continue;
+    const kinds = [];
+    for (const [kind, re] of CLAIM_RULES) {
+      if (kind === 'done' && kinds.length) continue; // "fatto" dentro un'altra affermazione non aggiunge nulla
+      const m = re.exec(sent);
+      if (!m) continue;
+      const before = sent.slice(0, m.index), near = sent.slice(Math.max(0, m.index - 30), m.index + m[0].length);
+      if (NOT_A_CLAIM.test(before) || NOT_A_CLAIM.test(m[0]) || NEGATION.test(near)) continue;
+      kinds.push(kind);
+      const p = (kind === 'fixed' || kind === 'created') ? pathsInReply(sent.slice(m.index))[0] : null;
+      out.push({ kind, text: sent.slice(0, 200), file: p ? p.path : null });
+    }
+  }
+  return out.slice(0, 40);
+}
+
+// le prove nello stesso turno: dalla richiesta dell'utente (capo) o dall'inizio del compito (sottoagente)
+function judgeClaim(c, steps, from, to, fileKey) {
+  const turn = steps.filter(s => s.t >= from && s.t < to && s.err !== null);
+  const edits = turn.filter(s => s.act === 'edit');
+  const lastEdit = edits.filter(s => !s.err).pop();
+  const after = lastEdit ? turn.filter(s => s.t > lastEdit.t) : turn;
+  const verdict = (pool) => {
+    if (!pool.length) return { status: 'ungrounded', step: null };
+    const last = pool[pool.length - 1];
+    if (last.err) return { status: 'contradicted', step: last };
+    return { status: 'grounded', step: last };
+  };
+  const isTest = s => s.act === 'verify' && isTestCommand(String(s.sig || '').replace(/^run:/, ''));
+  switch (c.kind) {
+    case 'tests': return verdict(after.filter(isTest));
+    case 'verified': return verdict(after.filter(s => s.act === 'verify' || s.act === 'run'));
+    case 'fixed': case 'created': {
+      const base = fileKey ? fileKey.slice(fileKey.lastIndexOf('/') + 1).toLowerCase() : null;
+      const pool = fileKey ? edits.filter(s => s.target === fileKey || String(s.target || '').toLowerCase().endsWith('/' + base) || String(s.target || '').toLowerCase() === base) : edits;
+      if (pool.some(s => !s.err)) return { status: pool[pool.length - 1].err ? 'contradicted' : 'grounded', step: pool[pool.length - 1] };
+      return verdict(pool);
+    }
+    default: { // done: nessuna prova richiesta, ma non con un test fallito e mai tornato verde
+      const tests = turn.filter(isTest);
+      const last = tests[tests.length - 1];
+      return last && last.err ? { status: 'ungrounded', step: last } : { status: 'grounded', step: null };
+    }
+  }
+}
+
+// agents: [{id, name, world, mind}]
+function checkClaims(session, agents, cwd, { only = null } = {}) {
+  const claims = [];
+  for (const a of agents) {
+    if (!a.world || (only && !only.has(a.id))) continue;
+    const goals = (a.mind && a.mind.goals) || [];
+    for (const r of a.world.replies) {
+      const from = a.id === 'main' ? goals.reduce((x, g) => (g.t <= r.t && g.t > x ? g.t : x), 0) : 0;
+      for (const c of extractClaims(r.text)) {
+        const key = c.file ? relKey(c.file, cwd) : null;
+        const j = judgeClaim(c, a.world.steps, from, r.t, key);
+        claims.push({ ...c, file: key, agent: a.id, agentName: a.name, t: r.t, status: j.status, evidence: j.step ? { t: j.step.t, tool: j.step.tool, act: j.step.act, target: j.step.target, err: !!j.step.err } : null });
+      }
+    }
+  }
+  claims.sort((x, y) => y.t - x.t);
+  const grounded = claims.filter(c => c.status === 'grounded').length;
+  return { claims: claims.slice(0, MAX_ITEMS), score: claims.length ? { grounded, total: claims.length, pct: Math.round(100 * grounded / claims.length) } : null };
+}
+
+module.exports = { checkStale, findGhosts, checkClaims, extractClaims, pathsInReply, SLACK, DISK_TTL };

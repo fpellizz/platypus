@@ -188,11 +188,76 @@ function ghostTests(ok) {
   }
 }
 
+function claimTests(ok) {
+  // estrazione: frase → tipi attesi (in ordine)
+  const cases = [
+    ['Ho corretto il refresh e i test passano.', ['tests', 'fixed']],
+    ['All tests pass.', ['tests']],
+    ['Tutti i test sono verdi.', ['tests']],
+    ['La suite è verde, tutto a posto.', ['tests']],
+    ["Ho verificato che l'endpoint risponde 200.", ['verified']],
+    ['I verified the fix in the browser.', ['verified']],
+    ['Now it works.', ['verified']],
+    ['Fixed the bug in `src/auth/refresh.ts`.', ['fixed']],
+    ['Ho creato `docs/guida.md` con i passaggi.', ['created']],
+    ['Added `src/utils/date.ts` with the helpers.', ['created']],
+    ['Completato.', ['done']],
+    ['Done!', ['done']],
+    ['Confermato: il problema era nel parser.', ['verified']],
+    // falsi positivi da evitare
+    ['Ora devo verificare che i test passino.', []],
+    ['Se i test passano, faccio il commit.', []],
+    ["I'll run the tests to verify.", []],
+    ['I test non passano ancora.', []],
+    ['Do the tests pass?', []],
+    ['Make sure all tests pass before merging.', []],
+    ['Il fatto è che il token scade.', []],
+    ['Once tests pass, we can ship.', []],
+    ['It should work now.', []],
+    ["Non funziona ancora.", []],
+    ['```\n// tests pass, done\n```', []],
+  ];
+  for (const [text, want] of cases) {
+    const got = grounding.extractClaims(text).map(c => c.kind);
+    ok(JSON.stringify(got) === JSON.stringify(want), `affermazioni: «${text.replace(/\n/g, ' ')}» → ${want.join(', ') || 'nessuna'}` + (JSON.stringify(got) === JSON.stringify(want) ? '' : ` (trovato: ${got.join(', ') || 'nessuna'})`));
+  }
+  const f = grounding.extractClaims('Fixed the bug in `src/auth/refresh.ts`.')[0];
+  ok(f && f.file === 'src/auth/refresh.ts', 'affermazioni: il file corretto è quello citato');
+
+  // prove nel turno: la mappa dell'agente come la costruisce state.js
+  const run = (w, cmd, t, err = false) => { const id = 'c' + (++seq); w.start(id, 'Bash', { command: cmd }, t, '/p', 0); w.end(id, err, { content: err ? 'FAIL' : 'ok' }, {}, t + 100, '/p'); };
+  const claimsAt = (a, text, t) => { a.world.reply(t, text); return grounding.checkClaims({}, [a], '/p').claims.filter(c => c.t === t); };
+  const a = { id: 'main', name: 'CLAUDE', world: new AgentWorld(), mind: { goals: [{ t: 500 }] } };
+  act(a.world, 'Read', 'src/auth/refresh.ts', 1000);
+  act(a.world, 'Edit', 'src/auth/refresh.ts', 2000);
+  let c = claimsAt(a, 'Ho corretto il refresh in `src/auth/refresh.ts` e i test passano.', 3000);
+  const by = k => c.find(x => x.kind === k);
+  ok(by('fixed') && by('fixed').status === 'grounded' && by('fixed').evidence.target === 'src/auth/refresh.ts', 'ho corretto X: ancorata dalla modifica a X');
+  ok(by('tests') && by('tests').status === 'ungrounded', 'i test passano senza averli lanciati dopo la modifica: non ancorata');
+  run(a.world, 'npm test', 4000);
+  c = claimsAt(a, 'Tests pass now.', 5000);
+  ok(c[0] && c[0].status === 'grounded' && c[0].evidence.act === 'verify', 'dopo npm test riuscito: ancorata');
+  act(a.world, 'Edit', 'src/auth/refresh.ts', 5500);
+  run(a.world, 'npm test', 6000, true);
+  c = claimsAt(a, 'All tests pass.', 7000);
+  ok(c[0] && c[0].status === 'contradicted', 'test fallito dopo l\'ultima modifica: smentita');
+  c = claimsAt(a, 'Fatto.', 7100);
+  ok(c[0] && c[0].kind === 'done' && c[0].status === 'ungrounded', 'fatto con un test rosso nel turno: non ancorata');
+  // nuovo turno (nuova richiesta dell'utente): le prove del turno prima non valgono
+  a.mind.goals.push({ t: 8000 });
+  c = claimsAt(a, 'Ho verificato, funziona.', 9000);
+  ok(c[0] && c[0].kind === 'verified' && c[0].status === 'ungrounded', 'nuovo turno: le prove del turno precedente non contano');
+  const sc = grounding.checkClaims({}, [a], '/p').score;
+  ok(sc && sc.total >= 5 && sc.pct === Math.round(100 * sc.grounded / sc.total), `indice di ancoraggio: ${sc ? sc.pct + '% su ' + sc.total : '-'}`);
+}
+
 function run(ok) {
   console.log('mappa contro territorio');
   groundingTests(ok);
   console.log('percorsi inventati');
   ghostTests(ok);
+  console.log('affermazioni');
+  claimTests(ok);
 }
 
 module.exports = { run };
