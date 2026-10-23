@@ -127,6 +127,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(lr.ok && lr.learning.total === 1 && fk2.learnedSessions === 1 && gl && gl.sessions.length === 2 && gl.level === 'lesson', `imparare dall'archivio: ${fk2.learnedSessions} sessione letta, il percorso inventato ora è una lezione (${gl ? gl.sessions.length : 0} sessioni)`);
   const lr2 = JSON.parse((await get(port, '/api/bottega/learn', 'POST', JSON.stringify({ cwd: fakeCwd }))).body);
   ok(lr2.ok && lr2.learning.total === 0, 'una sessione già letta e non cambiata non si rilegge');
+  const hn = JSON.parse((await get(port, '/api/bottega/hints?sid=bottega-smoke-0001')).body);
+  ok(hn.ok && Array.isArray(hn.hints), `il Nonno risponde: ${hn.hints ? hn.hints.length : '-'} cose da dire`);
+  core.state.setSettings({ bottegaLearn: false });
+  const off = await get(port, '/api/bottega/learn', 'POST', JSON.stringify({ cwd: fakeCwd }));
+  ok(off.status === 409 && core.learnLive() === 0, 'apprendimento spento: niente dal vivo né dall\'archivio → ' + off.status);
+  core.state.setSettings({ bottegaLearn: true });
   const bkDemo = JSON.parse((await get(port, `/api/bottega?sid=${p1.id}`)).body);
   ok(bkDemo.ok && bkDemo.lessons.length === 0, 'la demo non scrive nel libro');
   // scenario della sorpresa: catena completa e un agente che cerca altrove

@@ -47,6 +47,8 @@ const DEFAULT_SETTINGS = {
   approveFromOffice: true, // permessi approvabili dai fumetti dell'ufficio
   approveWaitSec: 120,  // quanto a lungo l'ufficio tiene in sospeso una richiesta
   groundingAlerts: false, // avvisi di ancoraggio: modifiche alla cieca e affermazioni smentite
+  elderEnabled: true,   // il Nonno racconta le lezioni del Libro della bottega
+  bottegaLearn: true,   // il Libro della bottega impara dalle sessioni (dal vivo e dall'archivio)
   coworkDirs: '',       // cartelle extra dove cercare le sessioni Cowork (separate da ;)
   claudeDirs: '',       // altre cartelle di configurazione di Claude Code (es. dentro WSL), separate da ;
   lang: 'auto',         // lingua: auto (quella del sistema), it, en

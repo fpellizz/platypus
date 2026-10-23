@@ -14,6 +14,7 @@
 //   GET  /api/bottega        {sid|cwd}  il Libro della bottega del progetto (lezioni dedotte dai fatti)
 //   POST /api/bottega        {sid|cwd, action: pin|ignore|unignore|forget, id}
 //   POST /api/bottega/learn  {sid|cwd}  impara dalle sessioni passate del progetto (in background)
+//   GET  /api/bottega/hints  {sid}  cosa direbbe il Nonno adesso: azioni in corso che corrispondono a una lezione
 //   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca, percorsi inventati, affermazioni, sorprese
 
 const { dataDir } = require('../paths');
@@ -26,7 +27,7 @@ const worldmap = require('./worldmap');
 const semantic = require('./semantic');
 const grounding = require('./grounding');
 const surprise = require('./surprise');
-const { Bottega, digest } = require('./bottega');
+const { Bottega, digest, hints } = require('./bottega');
 const { TranscriptWatcher, SessionRegistry, claudeDir, findCoworkBases } = require('./sources');
 const { Weather } = require('./weather');
 const { describeTool } = require('./describe');
@@ -57,6 +58,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
   // (i casi già visti non contano due volte; la demo ha il suo libro finto)
   function learnLive() {
     let n = 0;
+    if (!state.settings.bottegaLearn) return 0;
     for (const s of state.sessions.values()) {
       if (s.demo || !s.cwd) continue;
       try { const agents = agentsOf(s); if (agents.length) n += bottega.learn(s.cwd, digest(s, agents)); } catch {}
@@ -307,6 +309,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
       case '/api/bottega/learn': {
         const cwd = projectCwd(j);
         if (!cwd) return json(res, 404, { ok: false });
+        if (!state.settings.bottegaLearn) return json(res, 409, { ok: false, reason: tr('L\'apprendimento del Libro della bottega è spento nelle opzioni.') });
         const job = bottega.learnFromArchive(cwd, { base, settings: state.settings, liveIds: liveIds() });
         return json(res, 200, { ok: true, learning: { running: job.running, total: job.total, done: job.done } });
       }
@@ -413,6 +416,11 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     if (url.pathname === '/api/agentmap') return json(res, 200, agentMap(url.searchParams));
     if (url.pathname === '/api/agentmind') return json(res, 200, agentMind(url.searchParams));
     if (url.pathname === '/api/grounding') return json(res, 200, agentGrounding(url.searchParams));
+    if (url.pathname === '/api/bottega/hints') {
+      const s = state.sessions.get(url.searchParams.get('sid') || '');
+      if (!s || !s.cwd) return json(res, 404, { ok: false });
+      try { return json(res, 200, { ok: true, hints: hints(s, agentsOf(s), bottega.view(s.cwd).lessons, state.now()) }); } catch (e) { return json(res, 200, { ok: false, error: e.message }); }
+    }
     if (url.pathname === '/api/bottega') {
       const cwd = projectCwd(Object.fromEntries(url.searchParams));
       return cwd ? json(res, 200, { ok: true, ...bottega.view(cwd) }) : json(res, 404, { ok: false });

@@ -110,5 +110,15 @@
   "Percorso che non esiste: {file}": "Path that doesn't exist: {file}",
   "Gli agenti lo cercano ma non c'è: forse è stato spostato o rinominato.": "Agents look for it but it isn't there: maybe it was moved or renamed.",
   "Passo lento: {cmd}": "Slow step: {cmd}",
-  "Resta appeso a lungo: meglio lanciarlo in background o con un limite di tempo.": "It hangs for a long time: better run it in the background or with a time limit."
+  "Resta appeso a lungo: meglio lanciarlo in background o con un limite di tempo.": "It hangs for a long time: better run it in the background or with a time limit.",
+  " e ": " and ",
+  "qualcuno": "someone",
+  "L'ultima volta {cmd} si è piantato {n} volte ({when}): rilancialo prima di indagare.": "Last time {cmd} got stuck {n} times ({when}): run it again before investigating.",
+  "{cmd} ci mette un'eternità ({when}): lancialo in background.": "{cmd} takes forever ({when}): run it in the background.",
+  "Con {cmd} ci si gira in tondo ({when}): cambia qualcosa prima di rilanciarlo.": "With {cmd} you go round in circles ({when}): change something before running it again.",
+  "Occhio a {file}: dopo le modifiche lì i test cadono spesso ({when}).": "Careful with {file}: tests often break after changes there ({when}).",
+  "{file} lo toccano in tanti: rileggilo prima di cambiarlo.": "Lots of people touch {file}: reread it before changing it.",
+  "{file} non c'è: l'avete già cercato ({when}), forse ha cambiato nome.": "{file} isn't there: you already looked for it ({when}), maybe it was renamed.",
+  "Quell'errore l'ha già sistemato {who} in {file} ({when}).": "{who} already fixed that error in {file} ({when}).",
+  "L'apprendimento del Libro della bottega è spento nelle opzioni.": "The Workshop book's learning is turned off in the options."
 }

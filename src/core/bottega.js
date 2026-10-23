@@ -221,6 +221,48 @@ class Bottega {
   }
 }
 
+// ---- il Nonno: quando l'azione in corso di un agente corrisponde a una lezione forte, ha qualcosa da dire
+const RECENT_MS = 30000;
+function hints(session, agents, lessons, now = Date.now()) {
+  const strong = lessons.filter(l => l.level === 'lesson' && !l.ignored);
+  if (!strong.length) return [];
+  const out = [];
+  for (const a of agents) {
+    if (!a.world) continue;
+    const st = a.world.steps, cur = st[st.length - 1];
+    if (!cur || (cur.err !== null && now - cur.t - (cur.dur || 0) > RECENT_MS)) continue; // in corso, o appena finita
+    const cmd = /^(run|verify|look)$/.test(cur.act) ? cmdOf(cur.sig) : null;
+    const match = l => {
+      if (cmd && (l.kind === 'flaky-command' || l.kind === 'slow-step' || l.kind === 'loop-trap')) return l.key === cmd;
+      if (cur.act === 'edit' && (l.kind === 'fragile-file' || l.kind === 'stale-trap')) return l.key === cur.target;
+      if ((cur.act === 'read' || cur.act === 'search') && l.kind === 'ghost-path') return l.key === cur.target;
+      if (l.kind === 'known-fix' && cur.err && cur.fail) return l.key.split(' → ')[0] === errorPattern(cur.fail.excerpt);
+      return false;
+    };
+    const l = strong.filter(match).sort((x, y) => y.weight - x.weight)[0];
+    if (l) out.push({ agent: a.id, agentName: a.name, lessonId: l.id, kind: l.kind, weight: l.weight, text: elderLine(l) });
+  }
+  return out;
+}
+// come lo direbbe il Nonno: breve, con le date in cui è successo
+function elderLine(l) {
+  const { localeTag } = require('../i18n');
+  const days = [...new Set(l.evidence.slice().sort((x, y) => x.t - y.t).map(e => new Date(e.t).toLocaleDateString(localeTag(), { day: 'numeric', month: 'long' })))].slice(-2);
+  const when = days.join(tr(' e '));
+  const [pat, file] = l.key.split(' → ');
+  const who = (l.evidence[0] && l.evidence[0].agent) || tr('qualcuno');
+  switch (l.kind) {
+    case 'flaky-command': return tr('L\'ultima volta {cmd} si è piantato {n} volte ({when}): rilancialo prima di indagare.', { cmd: l.key, n: l.count, when });
+    case 'slow-step': return tr('{cmd} ci mette un\'eternità ({when}): lancialo in background.', { cmd: l.key, when });
+    case 'loop-trap': return tr('Con {cmd} ci si gira in tondo ({when}): cambia qualcosa prima di rilanciarlo.', { cmd: l.key, when });
+    case 'fragile-file': return tr('Occhio a {file}: dopo le modifiche lì i test cadono spesso ({when}).', { file: l.key, when });
+    case 'stale-trap': return tr('{file} lo toccano in tanti: rileggilo prima di cambiarlo.', { file: l.key });
+    case 'ghost-path': return tr('{file} non c\'è: l\'avete già cercato ({when}), forse ha cambiato nome.', { file: l.key, when });
+    case 'known-fix': return tr('Quell\'errore l\'ha già sistemato {who} in {file} ({when}).', { who, file, when, pat });
+    default: return l.key;
+  }
+}
+
 // peso: cresce con i casi e con le sessioni diverse, si dimezza ogni 30 giorni dall'ultimo caso
 function weightOf(l, now = Date.now()) {
   const base = (1 + Math.log2(Math.max(1, l.count))) * (1 + 0.5 * (Math.max(1, l.sessions.length) - 1));
@@ -242,4 +284,4 @@ function describe(l) {
   }
 }
 
-module.exports = { Bottega, digest, projectKey, normDir, errorPattern, weightOf, KINDS, HALF_LIFE };
+module.exports = { Bottega, digest, hints, elderLine, projectKey, normDir, errorPattern, weightOf, KINDS, HALF_LIFE };

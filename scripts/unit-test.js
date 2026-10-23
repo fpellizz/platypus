@@ -448,9 +448,47 @@ function bottegaTests(ok) {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
+// il Nonno (C2): l'azione in corso di un agente contro le lezioni forti del libro
+function elderTests(ok) {
+  const bt = require(path.join(ROOT, 'src', 'core', 'bottega'));
+  const now = Date.now();
+  const ev = (k, i) => ({ sid: 's' + i, t: now - (3 - i) * 86400000, agent: 'EXPLORE', excerpt: '' });
+  const lesson = (kind, key, extra = {}) => ({ id: kind, kind, key, count: 3, sessions: ['s1', 's2'], first: now - 3 * 86400000, last: now - 86400000, evidence: [ev(kind, 1), ev(kind, 2)], pinned: false, ignored: false, weight: 3, level: 'lesson', ...extra });
+  const lessons = [
+    lesson('flaky-command', 'npm run test:e2e'),
+    lesson('ghost-path', 'src/auth/oldToken.ts'),
+    lesson('known-fix', "TypeError: Cannot read properties of undefined (reading <…>) → src/auth/refresh.ts"),
+    lesson('slow-step', 'npm run build', { level: 'observation' }),
+    lesson('fragile-file', 'src/db/pool.ts', { ignored: true }),
+  ];
+  const a = agent('a', 'TEST-RUNNER'), b = agent('b', 'EXPLORE'), c = agent('c', 'CLAUDE'), d = agent('d', 'BUILDER'), e = agent('e', 'DB');
+  a.world.start('h1', 'Bash', { command: 'npm run test:e2e' }, now - 2000, '/p', 0);                     // in corso
+  act(b.world, 'Read', 'src/auth/oldToken.ts', now - 5000, { err: true, out: 'File does not exist.' }); // appena finita
+  c.world.start('h3', 'Bash', { command: 'npm test' }, now - 4000, '/p', 0);
+  c.world.end('h3', true, { content: "FAIL\n    TypeError: Cannot read properties of undefined (reading 'exp')\n      at renew (src/auth/refresh.ts:42:18)" }, {}, now - 3000, '/p');
+  d.world.start('h4', 'Bash', { command: 'npm run build' }, now - 1000, '/p', 0);                        // solo un'osservazione
+  act(e.world, 'Edit', 'src/db/pool.ts', now - 1000);                                                     // lezione ignorata
+  const h = bt.hints({ id: 's' }, [a, b, c, d, e], lessons, now);
+  const by = id => h.find(x => x.agent === id);
+  ok(by('a') && by('a').kind === 'flaky-command' && /npm run test:e2e/.test(by('a').text) && /3/.test(by('a').text), 'Nonno: sta per lanciare un comando instabile — «' + (by('a') && by('a').text) + '»');
+  ok(by('b') && by('b').kind === 'ghost-path', 'Nonno: cerca un percorso che non esiste');
+  ok(by('c') && by('c').kind === 'known-fix' && /EXPLORE/.test(by('c').text) && /refresh\.ts/.test(by('c').text), 'Nonno: errore già sistemato — «' + (by('c') && by('c').text) + '»');
+  ok(!by('d') && !by('e'), 'Nonno: niente per le osservazioni e per le lezioni ignorate');
+  const old = agent('o', 'OLD');
+  act(old.world, 'Read', 'src/auth/oldToken.ts', now - 120000, { err: true, out: 'File does not exist.' });
+  ok(!bt.hints({ id: 's' }, [old], lessons, now).length, 'Nonno: un\'azione finita da più di 30 s non conta');
+  // l'interruttore dell'apprendimento
+  const { OfficeState, DEFAULT_SETTINGS } = require(path.join(ROOT, 'src', 'core', 'state'));
+  ok(DEFAULT_SETTINGS.elderEnabled === true && DEFAULT_SETTINGS.bottegaLearn === true, 'opzioni: Nonno e apprendimento accesi di base');
+  const st = new OfficeState({});
+  st.setSettings({ bottegaLearn: false, elderEnabled: false });
+  ok(st.settings.bottegaLearn === false && st.settings.elderEnabled === false, 'opzioni: si spengono');
+}
+
 function run(ok) {
   console.log('libro della bottega');
   bottegaTests(ok);
+  elderTests(ok);
   console.log('sorprese');
   surpriseTests(ok);
   console.log('mappa contro territorio');
