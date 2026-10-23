@@ -37,12 +37,13 @@
 
   const W = { open: false, sid: null, aid: 'main', replay: false, data: null, T: null, playing: false, yaw: -0.6, pitch: 0.42, drag: null,
     axes: ['work', 'novelty', 'friction'], hover: null, tiles: [], timer: null, fetching: false, layoutSig: '', layout: null, lastFrame: 0,
-    view: 'map', mind: null, mhover: null };
+    view: 'map', mind: null, mhover: null, ground: null, groundSeq: 0 };
+  const VIEWS = ['map', 'mind', 'ground'];
 
   function el() { return $('#worldmap'); }
 
   window.openWorldMap = function (sid, aid, replay) {
-    W.open = true; W.sid = sid; W.aid = aid || 'main'; W.replay = !!replay; W.T = null; W.playing = false; W.data = null; W.mind = null; W.layoutSig = '';
+    W.open = true; W.sid = sid; W.aid = aid || 'main'; W.replay = !!replay; W.T = null; W.playing = false; W.data = null; W.mind = null; W.ground = null; W.layoutSig = '';
     build();
     el().hidden = false;
     refresh();
@@ -64,7 +65,7 @@
       <div class="wm-head">
         <h3>${esc(tr('MAPPA DELLA REALTÀ'))}</h3>
         <select class="wm-agent">${opts.map(([k, l]) => `<option value="${esc(k)}" ${k === W.aid ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
-        <span class="wm-views"><button data-v="map">${esc(tr('TERRITORIO E TRAIETTORIA'))}</button><button data-v="mind">${esc(tr('BOLLA E STELLA POLARE'))}</button></span>
+        <span class="wm-views"><button data-v="map">${esc(tr('TERRITORIO E TRAIETTORIA'))}</button><button data-v="mind">${esc(tr('BOLLA E STELLA POLARE'))}</button><button data-v="ground">${esc(tr('MAPPA E TERRITORIO'))}</button></span>
         <span class="wm-phase"></span>
         <span class="wm-stats"></span>
         <button class="wm-help-btn" title="${esc(tr('Come si legge'))}">?</button>
@@ -84,6 +85,10 @@
           <div class="wm-star"><div class="wm-cap">${esc(tr('STELLA POLARE'))} <span class="dim">${esc(tr('quanto resta sul compito'))}</span></div><canvas></canvas><div class="wm-starinfo"></div></div>
           <div class="wm-comp"><div class="wm-cap">${esc(tr('DI COSA È FATTO IL CONTESTO'))}</div><div class="wm-compbody"></div></div>
         </div>
+      </div>
+      <div class="wm-body wm-ground">
+        <div class="wm-gterr"><div class="wm-cap">${esc(tr('TERRITORIO'))} <span class="dim">${esc(tr('con i fantasmi e i ricordi scaduti'))}</span></div><canvas></canvas><div class="wm-tip" hidden></div></div>
+        <div class="wm-gside"><div class="wm-cap">${esc(tr('MAPPA CONTRO TERRITORIO'))} <span class="dim">${esc(tr('quello che dice e sa, contro quello che c\'è'))}</span></div><div class="wm-gbody"></div></div>
       </div>
       <div class="wm-time"><button class="wm-play">▶</button><canvas class="wm-band"></canvas><input type="range" min="0" max="1000" value="1000"><button class="wm-live">${esc(tr('IN DIRETTA'))}</button><span class="wm-clock"></span></div>
       <div class="wm-legend" hidden>
@@ -118,17 +123,26 @@
     };
     bub.onpointerup = () => { W.drag = null; };
     bub.onmouseleave = () => { W.mhover = null; };
-    const terr = e.querySelector('.wm-terr canvas');
-    terr.onmousemove = ev => { const r = terr.getBoundingClientRect(); W.hover = { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
-    terr.onmouseleave = () => { W.hover = null; };
+    for (const terr of e.querySelectorAll('.wm-terr canvas, .wm-gterr canvas')) {
+      terr.onmousemove = ev => { const r = terr.getBoundingClientRect(); W.hover = { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
+      terr.onmouseleave = () => { W.hover = null; };
+    }
+    // un elemento dell'elenco porta al suo momento sulla linea del tempo
+    e.querySelector('.wm-gbody').onclick = ev => {
+      const it = ev.target.closest('[data-t]');
+      if (!it) return;
+      W.playing = false; W.T = Number(it.dataset.t);
+    };
   }
 
   function setView(v) {
-    W.view = v === 'mind' ? 'mind' : 'map';
+    W.view = VIEWS.includes(v) ? v : 'map';
     const e = el();
     e.classList.toggle('view-mind', W.view === 'mind');
+    e.classList.toggle('view-ground', W.view === 'ground');
     for (const b of e.querySelectorAll('.wm-views button')) b.classList.toggle('on', b.dataset.v === W.view);
-    if (W.view === 'mind' && !W.mind) refresh();
+    W.layoutSig = '';
+    if ((W.view === 'mind' && !W.mind) || (W.view === 'ground' && !W.ground)) refresh();
   }
   async function refresh() {
     if (W.fetching) return;
@@ -142,6 +156,10 @@
       if (W.view === 'mind') {
         const m = await (await fetch('/api/agentmind?' + q)).json();
         if (m && m.ok) W.mind = m;
+      }
+      if (W.view === 'ground') {
+        const g = await (await fetch('/api/grounding?' + q)).json();
+        if (g && g.ok) { W.ground = g; W.groundSeq++; }
       }
     } catch {} finally { W.fetching = false; }
   }
@@ -167,6 +185,8 @@
     const known = new Map(d.nodes.map(n => [n[0], n]));
     const keys = new Set(d.tree && d.tree.available ? d.tree.files.map(f => f[0]) : []);
     for (const k of known.keys()) keys.add(k);
+    // nella vista "mappa e territorio" anche i file citati nelle risposte che non esistono hanno una casella
+    if (W.view === 'ground' && W.ground) for (const g of W.ground.ghosts) keys.add(g.key);
     for (const key of keys) {
       const g = groupOf(key);
       let parts;
@@ -243,13 +263,14 @@
     return { ctx, w, h };
   }
 
-  function drawTerritory(t) {
-    const cv = el().querySelector('.wm-terr canvas');
+  function drawTerritory(t, box = '.wm-terr') {
+    const cv = el().querySelector(box + ' canvas');
     const { ctx, w, h } = fitCanvas(cv);
     ctx.fillStyle = '#07060c'; ctx.fillRect(0, 0, w, h);
     const d = W.data;
     if (!d) { ctx.fillStyle = '#83769C'; ctx.font = '18px VT, monospace'; ctx.fillText(tr('Carico la mappa…'), 12, 24); return; }
-    const sig = w + 'x' + h + '|' + d.nodes.length + '|' + (d.tree ? d.tree.files.length : 0) + '|' + W.aid;
+    const g = box === '.wm-gterr' ? W.ground : null;
+    const sig = w + 'x' + h + '|' + d.nodes.length + '|' + (d.tree ? d.tree.files.length : 0) + '|' + W.aid + '|' + (g ? g.ghosts.length : -1);
     if (sig !== W.layoutSig) { W.layout = layoutTree(buildHierarchy(), w, h); W.layoutSig = sig; }
     const { tiles, boxes } = W.layout;
     const T = nowT();
@@ -295,16 +316,41 @@
       const cur = pts[pts.length - 1];
       if (cur && ((t / 300) | 0) % 2) { ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.strokeRect(cur.x - 1, cur.y - 1, cur.w + 2, cur.h + 2); }
     });
+    // mappa contro territorio: fantasmi (viola, tratteggiati, "?") e ricordi scaduti (arancione, orologio)
+    const ghostAt = new Map(), staleAt = new Map();
+    if (g) {
+      for (const x of g.ghosts) if (x.t <= T && !ghostAt.has(x.key)) ghostAt.set(x.key, x);
+      for (const x of g.stale) if ((x.changedAt || x.readAt) <= T && !staleAt.has(x.key)) staleAt.set(x.key, x);
+      ctx.save();
+      for (const [key, x] of ghostAt) {
+        const tl = byKey.get(key); if (!tl) continue;
+        ctx.fillStyle = x.createdLater ? 'rgba(131,118,156,0.35)' : 'rgba(126,37,83,0.75)';
+        ctx.fillRect(tl.x + 0.5, tl.y + 0.5, Math.max(0.5, tl.w - 1), Math.max(0.5, tl.h - 1));
+        ctx.setLineDash([3, 2]); ctx.strokeStyle = '#ff77a8'; ctx.lineWidth = 1.5;
+        ctx.strokeRect(tl.x + 1, tl.y + 1, Math.max(1, tl.w - 2), Math.max(1, tl.h - 2));
+        ctx.setLineDash([]);
+        if (tl.w > 9 && tl.h > 9) { ctx.fillStyle = '#ff77a8'; ctx.font = '14px VT, monospace'; ctx.fillText('?', tl.x + tl.w - 8, tl.y + tl.h - 3); }
+      }
+      for (const [key] of staleAt) {
+        const tl = byKey.get(key); if (!tl) continue;
+        ctx.strokeStyle = '#ffa300'; ctx.lineWidth = 2;
+        ctx.strokeRect(tl.x + 1, tl.y + 1, Math.max(1, tl.w - 2), Math.max(1, tl.h - 2));
+        if (tl.w > 10 && tl.h > 10) drawClock(ctx, tl.x + tl.w - 6, tl.y + 6, 4);
+      }
+      ctx.restore();
+    }
     // tooltip
-    const tip = el().querySelector('.wm-tip');
+    const tip = el().querySelector(box + ' .wm-tip');
     let ht = null;
     if (W.hover) for (const tl of tiles) if (W.hover.x >= tl.x && W.hover.x < tl.x + tl.w && W.hover.y >= tl.y && W.hover.y < tl.y + tl.h) { ht = tl; break; }
     if (ht) {
       const n = ht.n, lv = levelAt(n, T);
-      const fmt = x => new Date(x).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
       const what = [tr('mai visto (nebbia)'), tr('visto citato, non aperto'), trn('letto {n} volta', 'letto {n} volte', (n && n[5]) || 1), tr('modificato'), tr('creato')][lv];
-      const when = n ? [n[1] && tr('visto alle {t}', { t: fmt(n[1]) }), n[2] && tr('letto alle {t}', { t: fmt(n[2]) }), n[3] && tr('modificato alle {t}', { t: fmt(n[3]) })].filter(Boolean).join(' · ') : '';
-      const html = `<b>${esc(ht.key.replace(/^(abs|web|cmd|agent|tool):/, ''))}</b><br>${esc(what)}${when ? '<br><span class="dim">' + esc(when) + '</span>' : ''}`;
+      const when = n ? [n[1] && tr('visto alle {t}', { t: hhmm(n[1]) }), n[2] && tr('letto alle {t}', { t: hhmm(n[2]) }), n[3] && tr('modificato alle {t}', { t: hhmm(n[3]) })].filter(Boolean).join(' · ') : '';
+      const gh = ghostAt.get(ht.key), st = staleAt.get(ht.key);
+      const whose = x => (W.aid === 'all' ? x.agentName + ': ' : '');
+      const extra = (gh ? '<br><span class="gh">' + esc(whose(gh) + ghostText(gh)) + '</span>' : '') + (st ? '<br><span class="st">' + esc(whose(st) + staleText(st)) + '</span>' : '');
+      const html = `<b>${esc(ht.key.replace(/^(abs|web|cmd|agent|tool):/, ''))}</b><br>${esc(gh && lv === 0 ? tr('non esiste') : what)}${when ? '<br><span class="dim">' + esc(when) + '</span>' : ''}${extra}`;
       if (tip._h !== html) { tip.innerHTML = html; tip._h = html; }
       tip.hidden = false;
       tip.style.left = Math.min(w - 220, W.hover.x + 12) + 'px';
@@ -316,6 +362,61 @@
       : tr('Progetto non leggibile da qui: si vede solo ciò che l\'agente ha toccato');
     if (stats._t !== txt) { stats.textContent = txt; stats._t = txt; }
   }
+  const hhmm = x => new Date(x).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
+  function drawClock(ctx, x, y, r) {
+    ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(x, y, r + 1, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#ffa300'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - r + 1); ctx.moveTo(x, y); ctx.lineTo(x + r - 1.5, y); ctx.stroke();
+  }
+
+  // ---------------------------------------------------------------- mappa contro territorio: testi e pannello
+  const GHOST_SRC = { tool: tr('aperto con uno strumento'), output: tr('cercato da un comando'), reply: tr('citato in una risposta') };
+  const CLAIM_KIND = { tests: tr('test'), verified: tr('verificato'), fixed: tr('corretto'), created: tr('creato'), done: tr('fatto') };
+  const CLAIM_STATUS = { grounded: [tr('ANCORATA'), 'ok'], ungrounded: [tr('SENZA PROVE'), 'mid'], contradicted: [tr('SMENTITA'), 'bad'] };
+  function ghostText(x) {
+    const s = tr('non esiste: {how} alle {t}', { how: GHOST_SRC[x.source] || x.source, t: hhmm(x.t) });
+    return x.createdLater ? s + ' · ' + tr('poi creato: era un\'intenzione') : s;
+  }
+  function staleText(x) {
+    if (x.gone) return tr('letto alle {a}, poi cancellato', { a: hhmm(x.readAt) });
+    if (x.changedBy) return tr('letto alle {a}, cambiato alle {b} da {who}', { a: hhmm(x.readAt), b: hhmm(x.changedAt), who: x.changedBy });
+    return tr('letto alle {a}, cambiato alle {b} fuori dalla sessione (da te o da un altro programma)', { a: hhmm(x.readAt), b: hhmm(x.changedAt || x.mtime) });
+  }
+  function evidenceText(c) {
+    const e = c.evidence;
+    if (!e) return c.kind === 'done' ? tr('nessuna prova richiesta') : tr('nel turno non c\'è un fatto che la confermi');
+    const what = e.target ? e.target.replace(/^(cmd|abs|web|agent|tool):/, '') : e.tool;
+    return (e.err ? tr('ultimo esito: {what} fallito alle {t}', { what, t: hhmm(e.t) }) : tr('prova: {what} alle {t}', { what, t: hhmm(e.t) }));
+  }
+  function drawGroundPanel() {
+    const box = el().querySelector('.wm-gbody');
+    const g = W.ground, T = nowT();
+    const key = W.groundSeq + '|' + (W.T == null ? 'live' : Math.floor(W.T / 1000));
+    if (box._k === key) return;
+    box._k = key;
+    if (!g) { box.innerHTML = `<p class="dim">${esc(tr('Carico la mappa…'))}</p>`; return; }
+    const many = W.aid === 'all';
+    const who = x => (many ? `<span class="ag">${esc(x.agentName)}</span> ` : '');
+    const at = (arr, f) => arr.filter(x => f(x) <= T);
+    const claims = at(g.claims, x => x.t), stale = at(g.stale, x => x.changedAt || x.readAt), ghosts = at(g.ghosts, x => x.t), blind = at(g.blindEdits, x => x.t);
+    const gr = claims.filter(c => c.status === 'grounded').length;
+    const pct = claims.length ? Math.round(100 * gr / claims.length) : null;
+    const sec = (title, n, body) => `<div class="gs"><div class="gt">${esc(title)} <span class="n">${n}</span></div>${body || `<div class="dim">${esc(tr('nessuno'))}</div>`}</div>`;
+    const row = (t, html) => `<div class="gi" data-t="${t}" title="${esc(tr('Vai a questo momento'))}">${html}</div>`;
+    let html = `<div class="gscore"><b class="${pct == null ? '' : pct >= 70 ? 'ok' : pct >= 40 ? 'mid' : 'bad'}">${pct == null ? '—' : pct + '%'}</b>` +
+      `<span>${esc(tr('INDICE DI ANCORAGGIO'))}<br><span class="dim">${claims.length ? esc(trn('{g} affermazione ancorata su {n}', '{g} affermazioni ancorate su {n}', claims.length, { g: gr })) : esc(tr('nessuna affermazione da controllare'))}</span></span></div>`;
+    html += sec(tr('AFFERMAZIONI'), claims.length, claims.slice(0, 60).map(c => {
+      const [lab, cls] = CLAIM_STATUS[c.status] || CLAIM_STATUS.ungrounded;
+      return row(c.t, `<b class="${cls}">${esc(lab)}</b> ${who(c)}<span class="q">«${esc(c.text)}»</span><br><span class="dim">${esc(hhmm(c.t))} · ${esc(CLAIM_KIND[c.kind] || c.kind)} · ${esc(evidenceText(c))}</span>`);
+    }).join(''));
+    html += sec(tr('RICORDI SCADUTI'), stale.length, stale.slice(0, 60).map(x => row(x.changedAt || x.readAt, `<span class="clk">◷</span> ${who(x)}<span class="k">${esc(x.key)}</span><br><span class="dim">${esc(staleText(x))}</span>`)).join(''));
+    html += sec(tr('PERCORSI INVENTATI'), ghosts.length, ghosts.slice(0, 60).map(x => row(x.t, `<span class="gq">?</span> ${who(x)}<span class="k">${esc(x.key)}</span>${x.createdLater ? ` <b class="later">${esc(tr('POI CREATO'))}</b>` : ''}<br><span class="dim">${esc(ghostText(x))}${x.excerpt ? ' · «' + esc(x.excerpt) + '»' : ''}</span>`)).join(''));
+    if (blind.length) html += sec(tr('MODIFICHE ALLA CIECA'), blind.length, blind.slice(0, 30).map(x => row(x.t, `<b class="${x.caught ? 'mid' : 'bad'}">${esc(x.caught ? tr('FERMATA') : tr('ALLA CIECA'))}</b> ${who(x)}<span class="k">${esc(x.key)}</span><br><span class="dim">${esc(x.caught ? tr('Claude Code l\'ha fermata: il file era cambiato dopo l\'ultima lettura') : tr('modificato senza rileggerlo dopo la modifica di {who}', { who: x.changedBy || '?' }))}</span>`)).join(''));
+    html += `<p class="dim note">${esc(tr('Ricostruito da quello che l\'agente fa e dice, non da quello che pensa. «Senza prove» vuol dire che nel turno non c\'è un fatto che la confermi, non che sia falsa.'))}` +
+      (g.disk && !g.disk.checked && g.disk.reason ? ' ' + esc(tr('Disco non controllato: {why}.', { why: g.disk.reason })) : '') + '</p>';
+    box.innerHTML = html;
+  }
+
   let fogCache = null;
   function fogPattern(ctx) {
     if (fogCache) return ctx.createPattern(fogCache, 'repeat');
@@ -481,6 +582,13 @@
         if (s[4] === 1) { ctx.fillStyle = '#000'; ctx.fillRect(x(s[0]), ai * rowH + rowH / 2 - 1, 2, 2); }
       }
     });
+    // mappa contro territorio: affermazioni (colore dell'esito), ricordi scaduti e fantasmi sulla linea del tempo
+    if (W.view === 'ground' && W.ground) {
+      const tick = (t, col, y0, hh) => { if (t >= a && t <= b) { ctx.fillStyle = col; ctx.fillRect(x(t) - 1, y0, 3, hh); } };
+      for (const c of W.ground.claims) tick(c.t, c.status === 'grounded' ? '#00e436' : c.status === 'contradicted' ? '#ff004d' : '#ffec27', 0, h / 2);
+      for (const s of W.ground.stale) tick(s.changedAt || s.readAt, '#ffa300', h / 2, h / 2);
+      for (const g of W.ground.ghosts) tick(g.t, '#ff77a8', h / 2, h / 2);
+    }
     const T = W.T == null ? b : W.T;
     ctx.fillStyle = '#fff1e8'; ctx.fillRect(x(T) - 1, 0, 2, h);
     const range = e.querySelector('input[type=range]');
@@ -709,6 +817,7 @@
     }
     try {
       if (W.view === 'mind') { drawBubble(t); drawStar(); drawComposition(); drawTimeline(); }
+      else if (W.view === 'ground') { drawTerritory(t, '.wm-gterr'); drawGroundPanel(); drawTimeline(); }
       else { drawTerritory(t); drawTrajectory(t); drawRadar(); drawTimeline(); }
     } catch (err) { console.error(err); }
     requestAnimationFrame(loop);

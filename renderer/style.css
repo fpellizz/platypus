@@ -548,3 +548,26 @@ body.widget #widget { display: block; flex: 1; padding: 6px 8px; overflow: hidde
 #worldmap .wm-compbody .fg { color: var(--ink); border-top: 1px dashed #2a2440; padding-top: 4px; }
 #worldmap .wm-terr, #worldmap .wm-traj, #worldmap .wm-radar, #worldmap .wm-bub, #worldmap .wm-star, #worldmap .wm-comp { min-width: 0; overflow: hidden; }
 #worldmap canvas { min-width: 0; max-width: 100%; }
+/* mappa della realtà: vista "mappa e territorio" */
+#worldmap .wm-ground { display: none; }
+#worldmap.view-ground .wm-body:not(.wm-ground) { display: none; }
+#worldmap.view-ground .wm-ground { display: grid; }
+#worldmap .wm-gterr, #worldmap .wm-gside { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; border: 2px solid #1d1a2b; }
+#worldmap .wm-gbody { flex: 1; min-height: 0; overflow: auto; padding: 6px; font-size: 15px; line-height: 1.1; }
+#worldmap .wm-gbody b { font-family: 'PS2P'; font-size: 7px; font-weight: normal; color: #000; padding: 2px 4px; background: #c2c3c7; }
+#worldmap .wm-gbody b.ok { background: #00e436; } #worldmap .wm-gbody b.mid { background: #ffec27; } #worldmap .wm-gbody b.bad { background: #ff004d; color: #fff; }
+#worldmap .wm-gbody b.later { background: #83769c; color: #fff; }
+#worldmap .wm-gbody .gscore { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-family: 'PS2P'; font-size: 8px; color: #c2c3c7; }
+#worldmap .wm-gbody .gscore .dim { font-family: 'VT'; font-size: 15px; }
+#worldmap .wm-gbody .gscore b { font-size: 14px; padding: 6px 8px; min-width: 64px; text-align: center; }
+#worldmap .wm-gbody .gs { margin-bottom: 8px; }
+#worldmap .wm-gbody .gt { font-family: 'PS2P'; font-size: 7px; color: #00e436; border-bottom: 1px dashed #2a2440; padding-bottom: 3px; margin-bottom: 3px; }
+#worldmap .wm-gbody .gt .n { color: var(--yellow); }
+#worldmap .wm-gbody .gi { padding: 3px 2px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; }
+#worldmap .wm-gbody .gi:hover { background: #14111f; }
+#worldmap .wm-gbody .q { color: var(--ink); }
+#worldmap .wm-gbody .k { color: #9fd8ff; word-break: break-all; }
+#worldmap .wm-gbody .ag { color: var(--yellow); }
+#worldmap .wm-gbody .clk { color: #ffa300; } #worldmap .wm-gbody .gq { color: #ff77a8; }
+#worldmap .wm-gbody .note { margin: 6px 0 0; }
+#worldmap .wm-tip .gh { color: #ff77a8; } #worldmap .wm-tip .st { color: #ffa300; }
