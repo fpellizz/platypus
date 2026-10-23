@@ -22,7 +22,8 @@ class Demo {
   }
   get on() { return !!this.timer; }
 
-  start() {
+  // scale: accorcia i tempi degli scenari costruiti apposta (le prove automatiche usano 0.02)
+  start({ scale = 1 } = {}) {
     if (this.timer) return;
     this.state.demo = true;
     this.ids.a = this.open('C:/Progetti/portale-clienti', tr('Refactoring login e sessioni'), 'cli');
@@ -33,7 +34,7 @@ class Demo {
     this.spawn(this.ids.d, 'Explore', tr('Leggi i report dei trimestri precedenti'));
     // capo reparto con la sua squadra
     const arch = this.spawn(this.ids.a, 'architect', tr('Progetta il nuovo modulo sessioni'));
-    for (const [t, d] of [['Explore', tr('Mappa i moduli di autenticazione')], ['Explore', tr('Trova dove scadono i token')], ['test-runner', tr('Esegui la suite di test')]]) this.spawn(this.ids.a, t, d, arch);
+    const team = [['Explore', tr('Mappa i moduli di autenticazione')], ['Explore', tr('Trova dove scadono i token')], ['test-runner', tr('Esegui la suite di test')]].map(([t, d]) => this.spawn(this.ids.a, t, d, arch));
     const planId = this.spawn(this.ids.a, 'Plan', tr('Piano di migrazione al nuovo DB'));
     // questo a un certo punto si perde tra i componenti grafici: si vede la deriva dalla stella polare
     const planA = this.state.sessions.get(this.ids.a).subs.get(planId);
@@ -63,8 +64,47 @@ class Demo {
       this.world.seed(x, x.main, 14);
       for (const a of x.subs.values()) this.world.seed(x, a, a._demoStuck ? 10 : a._demoDrift ? 24 : 5 + Math.floor(Math.random() * 14), a._demoStuck ? 'npm run test:e2e' : null);
     }
+    this.groundingScenario(this.ids.a, { explore: team[0], architect: arch, tester: team[2] }, scale);
     this.timer = setInterval(() => this.step(), 900);
     this.state.touch();
+  }
+
+  // mappa contro territorio, costruita apposta sul piano 1: un ricordo scaduto, un percorso inventato,
+  // un'affermazione senza prove che nel turno dopo diventa ancorata. Il disco è finto (s.demoDisk).
+  groundingScenario(sid, ids, scale) {
+    const s = this.state.sessions.get(sid);
+    if (!s) return;
+    const ag = { main: s.main, explore: s.subs.get(ids.explore), architect: s.subs.get(ids.architect), tester: s.subs.get(ids.tester) };
+    if (!ag.explore || !ag.architect || !ag.tester) return;
+    s.demoDisk = new Map([['src/auth/oldToken.ts', { exists: false }]]);
+    const hold = Date.now() + 120000 * scale; // intanto questi agenti non fanno altro: lo scenario resta leggibile
+    for (const a of Object.values(ag)) a._demoHold = hold;
+    const at = (sec, fn) => { const tm = setTimeout(() => { this.world.timers.delete(tm); try { fn(); } catch {} }, sec * 1000 * scale); this.world.timers.add(tm); };
+    const tool = (sec, a, name, input, out, err, dur = 1) => {
+      const id = 'demo-gr-' + (++this.n);
+      at(sec, () => {
+        this.hook(sid, 'PreToolUse', { agent_id: a.kind === 'main' ? undefined : a.id, agent_type: a.kind === 'main' ? undefined : a.type, tool_name: name, tool_input: input });
+        this.state.worldStart(s, a, id, name, input, Date.now());
+      });
+      at(sec + dur, () => {
+        this.state.worldEnd(s, a, id, !!err, { content: out }, { toolUseResult: {} }, Date.now());
+        if (name === 'Edit' && !err) s.demoDisk.set(input.file_path, { mtime: Date.now() });
+      });
+    };
+    const reply = (sec, text) => at(sec, () => {
+      this.state.mindOf(s, s.main).add('reply', Date.now(), text.slice(0, 80), text);
+      this.state.worldReply(s, s.main, Date.now(), text);
+      this.state.setAgent(s.main, 'writing', tr('Scrive: «{text}»', { text: text.slice(0, 44) }), Date.now());
+    });
+    tool(3, ag.explore, 'Read', { file_path: 'src/auth/session.ts' }, "import { token } from './token';");
+    tool(8, ag.architect, 'Edit', { file_path: 'src/auth/session.ts' }, 'ok');
+    tool(12, ag.tester, 'Read', { file_path: 'src/auth/oldToken.ts' }, 'File does not exist.', true);
+    tool(14, s.main, 'Read', { file_path: 'src/auth/refresh.ts' }, "import { session } from './session';"); // rilegge prima di modificare: niente modifica alla cieca
+    tool(16, s.main, 'Edit', { file_path: 'src/auth/refresh.ts' }, 'ok');
+    reply(19, tr('Ho corretto il refresh in {file} e i test passano.', { file: '`src/auth/refresh.ts`' }));
+    at(50, () => this.hook(sid, 'UserPromptSubmit', { prompt: tr('Hai lanciato i test?') }));
+    tool(53, s.main, 'Bash', { command: 'npm test' }, 'Tests: 42 passed, 42 total', false, 7);
+    reply(62, tr('Ho lanciato {cmd}: ora tutti i test passano.', { cmd: '`npm test`' }));
   }
 
   stop() {
@@ -143,7 +183,8 @@ class Demo {
       const r = Math.random();
       // capo
       if (r < 0.4) this.state.addTokens(s, s.main, { input_tokens: 30, output_tokens: 200 + Math.random() * 500, cache_read_input_tokens: 40000, cache_creation_input_tokens: 1500 }, null);
-      if (s.main.status === 'waiting') { if (r < 0.2) this.hook(s.id, 'PostToolUse', {}); }
+      if (s.main._demoHold > Date.now()) { /* sta recitando uno scenario: niente azioni a caso */ }
+      else if (s.main.status === 'waiting') { if (r < 0.2) this.hook(s.id, 'PostToolUse', {}); }
       else if (s.main.status === 'idle') { if (r < 0.05) this.hook(s.id, 'UserPromptSubmit', { prompt: pick([tr('Ok, procedi'), tr('Aggiungi anche i test'), tr('Ora scrivi il README')]) }); }
       else if (s.id === this.ids.c && r < 0.05) this.hook(s.id, 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'git push origin main' } });
       else if (r < 0.03 && !subs.length) this.hook(s.id, 'Stop', {});
@@ -151,7 +192,7 @@ class Demo {
       else if (r < 0.45) this.hook(s.id, 'PostToolUse', {});
       // squadre
       for (const a of subs) {
-        if (a._demoStuck) continue;
+        if (a._demoStuck || a._demoHold > Date.now()) continue;
         const q = Math.random();
         // token: ogni agente consuma un po' a ogni passo
         if (q < 0.5) this.state.addTokens(s, a, { input_tokens: 40, output_tokens: 300 + Math.random() * 600, cache_read_input_tokens: 20000 + Math.random() * 30000, cache_creation_input_tokens: Math.random() * 3000 }, null);

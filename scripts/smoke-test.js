@@ -60,7 +60,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const port = 47900 + Math.floor(Math.random() * 90);
   const core = startCore({ port, base, settingsPath: path.join(tmp, 'settings.json'), statsPath: path.join(tmp, 'stats.json'), fetch: async () => { throw new Error('offline'); } });
   await core.ready;
-  core.demo.start();
+  core.demo.start({ scale: 0.02 }); // gli scenari costruiti apposta, in velocità
   await sleep(2500);
   const st = JSON.parse((await get(port, '/api/state')).body);
   ok(st.sessions.length >= 4, `demo: ${st.sessions.length} piani, ${st.sessions.reduce((a, s) => a + s.subs.length, 0)} sottoagenti`);
@@ -75,6 +75,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(mind.ok && mind.pieces && mind.pieces.length > 0, `bolla del contesto: ${mind.pieces ? mind.pieces.length : 0} pezzi`);
   const gr = JSON.parse((await get(port, `/api/grounding?sid=${sid}&aid=all`)).body);
   ok(gr.ok && Array.isArray(gr.stale) && Array.isArray(gr.blindEdits) && Array.isArray(gr.ghosts) && Array.isArray(gr.claims) && gr.disk, `mappa contro territorio: ${gr.stale ? gr.stale.length : 0} ricordi scaduti, ${gr.blindEdits ? gr.blindEdits.length : 0} modifiche alla cieca, ${gr.ghosts ? gr.ghosts.length : 0} percorsi inventati, ${gr.claims ? gr.claims.length : 0} affermazioni`);
+  // lo scenario della demo sul piano 1 (portale-clienti)
+  const p1 = st.sessions.find(s => /portale-clienti/.test(s.cwd));
+  const sc = p1 ? JSON.parse((await get(port, `/api/grounding?sid=${p1.id}&aid=all`)).body) : {};
+  ok(sc.ok && sc.disk && sc.disk.checked, 'scenario: disco finto della demo');
+  ok(sc.ok && sc.stale.some(x => x.key === 'src/auth/session.ts' && /EXPLORE/.test(x.agentName) && /ARCHITECT/.test(x.changedBy || '')), 'scenario: ricordo scaduto di EXPLORE, cambiato da ARCHITECT');
+  ok(sc.ok && sc.ghosts.some(x => x.key === 'src/auth/oldToken.ts' && x.source === 'tool'), 'scenario: percorso inventato src/auth/oldToken.ts');
+  const tc = sc.ok ? sc.claims.filter(c => c.agent === 'main' && c.kind === 'tests').sort((a, b) => a.t - b.t) : [];
+  ok(tc.length >= 2 && tc[0].status === 'ungrounded' && tc[tc.length - 1].status === 'grounded', `scenario: «i test passano» prima senza prove, poi ancorata (${tc.map(c => c.status).join(' → ')})`);
+  ok(sc.ok && sc.claims.some(c => c.agent === 'main' && c.kind === 'fixed' && c.status === 'grounded'), 'scenario: «ho corretto il refresh» ancorata dalla modifica');
+  ok(sc.ok && !sc.blindEdits.some(b => b.agent === 'main' && b.key === 'src/auth/refresh.ts'), 'scenario: CLAUDE rilegge refresh.ts prima di modificarlo (niente modifica alla cieca)');
   const hook = await get(port, '/platypus-hook', 'POST', JSON.stringify({ session_id: 'smoke-1', hook_event_name: 'PreToolUse', cwd: tmp, tool_name: 'Read', tool_input: { file_path: 'a.txt' } }));
   ok(hook.status === 204, 'hook ricevuto → ' + hook.status);
   const perm = await get(port, '/platypus-hook/permission', 'POST', JSON.stringify({ session_id: 'smoke-1', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' } }));
