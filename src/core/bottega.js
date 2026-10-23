@@ -111,11 +111,20 @@ class Bottega {
     return b;
   }
 
+  // il libro finto della demo: solo in memoria, mai sul disco
+  seedDemo(cwd, cases) {
+    const b = this.book(cwd);
+    b.demo = true; b.lessons = {}; b.learned = {};
+    this.learn(cwd, cases);
+    b.dirty = false;
+  }
+  dropDemo() { for (const [k, b] of this.books) if (b.demo) this.books.delete(k); }
+
   save() {
     for (const b of this.books.values()) {
-      if (!b.dirty) continue;
+      if (!b.dirty || b.demo) continue;
       b.dirty = false;
-      const { dirty, job, ...data } = b;
+      const { dirty, job, demo, ...data } = b;
       try { fs.mkdirSync(this.dir, { recursive: true }); fs.writeFileSync(path.join(this.dir, b.key + '.json'), JSON.stringify(data)); } catch {}
     }
   }

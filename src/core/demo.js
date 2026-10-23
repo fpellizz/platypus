@@ -9,12 +9,15 @@ const { tr } = require('../i18n');
 const REVIEW_TARGETS = () => [tr('modulo ordini'), tr('API magazzino'), tr('scheduler PLC'), tr('report turni'), tr('login operatori'), tr('export SAP'), tr('allarmi linea 3'), tr('ricette prodotto'), tr('tracciabilità lotti'), tr('dashboard OEE')];
 
 const { DemoWorld, treeFor } = require('./demoworld');
+const { classifyFailure } = require('./surprise');
+const { errorPattern } = require('./bottega');
 
 function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
 
 class Demo {
-  constructor(state) {
+  constructor(state, { bottega } = {}) {
     this.state = state;
+    this.bottega = bottega || null; // per il libro finto dei progetti della demo
     this.timer = null;
     this.n = 0;
     this.ids = {};
@@ -65,8 +68,32 @@ class Demo {
       for (const a of x.subs.values()) this.world.seed(x, a, a._demoStuck ? 10 : a._demoDrift ? 24 : 5 + Math.floor(Math.random() * 14), a._demoStuck ? 'npm run test:e2e' : null);
     }
     this.groundingScenario(this.ids.a, { explore: team[0], architect: arch, tester: team[2], plan: planId }, scale);
+    this.seedBooks();
     this.timer = setInterval(() => this.step(), 900);
     this.state.touch();
+  }
+
+  // il Libro della bottega dei progetti della demo: lezioni finte degli ultimi giorni, coerenti con gli scenari
+  // del piano 1 (così il Nonno passa nei primi secondi, quando ARCHITECT modifica session.ts). Solo in memoria.
+  seedBooks() {
+    if (!this.bottega) return;
+    const now = Date.now(), day = 86400000;
+    const at = (d, h) => now - d * day - h * 3600000;
+    const cases = [];
+    const add = (kind, key, list, agent, excerpt) => { for (const [d, h, sid] of list) cases.push({ kind, key, t: at(d, h), sid, agent, excerpt }); };
+    // lo stesso errore dello scenario: la chiave nasce dallo stesso estratto, così il Nonno lo riconosce
+    const fail = classifyFailure("FAIL tests/auth.test.ts\n  ● refresh › renews the token\n    TypeError: Cannot read properties of undefined (reading 'exp')\n      at renew (src/auth/refresh.ts:42:18)", 'npm test');
+    add('stale-trap', 'src/auth/session.ts', [[4, 3, 'demo-old-1'], [2, 5, 'demo-old-2'], [1, 2, 'demo-old-3']], 'EXPLORE', tr('cambiato da {who}', { who: 'ARCHITECT' }));
+    add('ghost-path', 'src/auth/oldToken.ts', [[3, 1, 'demo-old-1'], [1, 4, 'demo-old-3']], 'TEST-RUNNER', 'File does not exist.');
+    add('flaky-command', 'npm run test:e2e', [[5, 2, 'demo-old-0'], [3, 6, 'demo-old-1'], [1, 1, 'demo-old-3']], 'TEST-RUNNER', 'Timeout - Async callback was not invoked within the 5000 ms timeout');
+    add('slow-step', 'npm run test:e2e', [[2, 3, 'demo-old-2']], 'TEST-RUNNER', tr('{min} min', { min: 13 }));
+    add('fragile-file', 'src/auth/refresh.ts', [[4, 2, 'demo-old-1'], [2, 2, 'demo-old-2']], 'TEST-RUNNER', fail.excerpt);
+    add('known-fix', errorPattern(fail.excerpt) + ' → src/auth/refresh.ts', [[4, 1, 'demo-old-1'], [2, 1, 'demo-old-2']], 'EXPLORE', fail.excerpt);
+    this.bottega.seedDemo('C:/Progetti/portale-clienti', cases);
+    const rev = [];
+    for (const [d, h, sid] of [[3, 2, 'demo-old-5'], [2, 4, 'demo-old-6'], [1, 3, 'demo-old-7']]) rev.push({ kind: 'flaky-command', key: 'npm test -- specs', t: at(d, h), sid, agent: 'SPEC-CHECKER', excerpt: 'FAIL specs/REQ-012.md' });
+    for (const [d, h, sid] of [[2, 1, 'demo-old-6'], [1, 1, 'demo-old-7']]) rev.push({ kind: 'ghost-path', key: 'specs/REQ-049.md', t: at(d, h), sid, agent: 'REVIEWER', excerpt: 'File does not exist.' });
+    this.bottega.seedDemo('D:/dev/mes-clone', rev);
   }
 
   // mappa contro territorio, costruita apposta sul piano 1: un ricordo scaduto, un percorso inventato,
@@ -123,6 +150,7 @@ class Demo {
     clearInterval(this.timer);
     this.timer = null;
     this.world.stop();
+    if (this.bottega) this.bottega.dropDemo();
     this.state.demo = false;
     this.state.removeDemo();
   }

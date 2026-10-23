@@ -74,7 +74,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
   state.includeCowork = !!includeCowork;
   const watcher = new TranscriptWatcher(state, { base });
   const registry = new SessionRegistry(state, watcher, { base });
-  const demo = new Demo(state);
+  const demo = new Demo(state, { bottega });
   const weather = new Weather(state, fetchImpl ? { fetch: fetchImpl } : {});
   const clients = new Set();
   let replay = null;
