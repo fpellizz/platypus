@@ -516,6 +516,17 @@ async function loadGrounding() {
   } catch {} finally { ground.busy = false; }
 }
 setInterval(loadGrounding, 3000);
+const elder = { sid: null, t: 0, busy: false, hints: [], back: new Map(), last: new Map() };
+async function loadHints() {
+  const s = viewSid && !isSpecial(viewSid) ? sessionById(viewSid) : null;
+  if (!s || elder.busy || !settingOn('elderEnabled') || (elder.sid === s.id && Date.now() - elder.t < 5000)) return;
+  elder.busy = true;
+  try {
+    const r = await (await fetch('/api/bottega/hints?' + new URLSearchParams({ sid: s.id }))).json();
+    elder.sid = s.id; elder.t = Date.now(); elder.hints = (r && r.ok && r.hints) || [];
+  } catch {} finally { elder.busy = false; }
+}
+setInterval(loadHints, 3000);
 const groundFor = c => (c.npc || c.sid !== ground.sid ? null : { stale: ground.stale.has(c.id), claim: ground.claim.get(c.id) || null, bang: ground.bang.get(c.id) || 0, puzzled: ground.puzzled.has(c.id) });
 
 async function loadCosts() { if (Date.now() - costsT < 60000 && costsData) return; costsT = Date.now(); try { costsData = await (await fetch('/api/stats/costs?days=14')).json(); } catch {} }
@@ -1703,11 +1714,18 @@ function makeNpc(kind) {
   const base = { key: 'npc:' + kind, id: 'npc:' + kind, npc: kind, x: ELEV.x, y: ELEV.y, path: [], dir: 'down', moving: false, alpha: 0, phase: 'walk', state: 'enter', until: 0, speech: '', role: 'npc' };
   if (kind === 'pest') return { ...base, look: { skin: '#E8B48A', hair: '#5F3A1E', style: 3, shirt: '#d4a017', pants: C.navy, acc: 'bowtie', accColor: C.red, pattern: 'stripes' }, data: { status: 'idle', kind: 'sub', type: tr('collega'), name: (snap.settings && snap.settings.pestName) || 'Ugo Pignolo', action: '', description: '' } };
   if (kind === 'hr') return { ...base, look: { skin: '#F2C6A0', hair: '#2B1B17', style: 1, shirt: C.white, pants: C.navy, acc: 'badge', accColor: C.plum, pattern: 'vest' }, data: { status: 'idle', kind: 'sub', type: tr('risorse umane'), name: hrName(), action: '', description: '' } };
+  if (kind === 'elder') return { ...base, age: 3, look: { skin: '#E8B48A', hair: '#F2F2F2', style: 0, shirt: '#8B5A2B', pants: '#5F574F', acc: 'none', accColor: '#8B5A2B', pattern: 'vest' }, data: { status: 'idle', kind: 'sub', type: tr('memoria del progetto'), name: tr('Nonno'), action: '', description: '' } };
   if (kind === 'janitor') return { ...base, look: { skin: '#C68A5E', hair: '#C2C3C7', style: 0, shirt: '#2c6e49', pants: '#1f3d2b', acc: 'cap', accColor: '#2c6e49', pattern: 'plain' }, data: { status: 'idle', kind: 'sub', type: tr('pulizie'), name: tr('Pulizie'), action: '', description: '' } };
   // gatto
   return { ...base, x: 0, y: 0, alpha: 1, state: 'nap', place: null };
 }
 
+// il Libro della bottega si apre su quella lezione (la vista del libro è in C3: finché non c'è, la lezione arriva in un avviso)
+function openElderBook(n) {
+  if (!n.hint) return;
+  if (window.openBottega && floor) return openBottega(floor.s.id, n.hint.lessonId);
+  toast(n.hint.text, true);
+}
 function hrName() { return (snap.settings && snap.settings.hrName) || 'Dott.ssa Ornella Rigore'; }
 function dropNpc(n) { if (n && n.el) { n.el.remove(); n.el = null; } npcs = npcs.filter(x => x !== n); }
 function resetNpcs() { for (const n of npcs) if (n.el) n.el.remove(); npcs = []; npcT0 = performance.now(); }
@@ -1804,12 +1822,36 @@ function updateNpcs(dt, t) {
     }
   }
   if (hr && hr.fading) { hr.alpha -= dt * 2.5; if (hr.alpha <= 0) { dropNpc(hr); updateNpcs.hrBack = t + 4000; } }
+  // il Nonno: quando l'azione in corso di un agente corrisponde a una lezione forte del Libro della bottega
+  let gp = npcs.find(n => n.npc === 'elder');
+  if (!settingOn('elderEnabled')) { if (gp) { dropNpc(gp); gp = null; } }
+  else if (!gp && floor && elder.sid === floor.s.id && t > (elder.back.get(floor.s.id) || 0)) {
+    const sid = floor.s.id;
+    // mai sullo stesso agente due volte di fila per la stessa lezione
+    const h = elder.hints.find(x => { const c = chars.get(x.agent); return c && c.phase === 'seated' && !c.errand && deskFor(c.id) && elder.last.get(sid) !== x.agent + '|' + x.lessonId; });
+    if (h) {
+      gp = makeNpc('elder'); gp.hint = h; gp.victim = h.agent; gp.place = { kind: 'elevator' }; gp.state = 'go'; npcs.push(gp);
+      openElevator(); npcGo(gp, besidePlace(deskFor(h.agent)));
+      elder.back.set(sid, t + 180000); elder.last.set(sid, h.agent + '|' + h.lessonId);
+    }
+  }
+  if (gp && !gp.path.length) {
+    const v = chars.get(gp.victim);
+    const there = v && v.phase === 'seated' && deskFor(v.id);
+    if (gp.state === 'go') {
+      if (!there) { gp.state = 'exit'; npcGo(gp, { kind: 'elevator' }); }
+      else { gp.state = 'tell'; gp.until = t + 9000; gp.dir = 'right'; gp.speech = gp.hint.text; gp.last = ''; }
+    } else if (gp.state === 'tell' && (!there || t > gp.until)) {
+      gp.speech = ''; gp.last = ''; gp.state = 'exit'; npcGo(gp, { kind: 'elevator' });
+    } else if (gp.state === 'exit') gp.fading = true;
+  }
+  if (gp && gp.fading) { gp.alpha -= dt * 2.5; if (gp.alpha <= 0) dropNpc(gp); }
   // movimento
   for (const n of npcs) {
     if (n.alpha < 1 && !n.fading) n.alpha = Math.min(1, n.alpha + dt * 3);
     if (!n.path.length) { n.moving = false; continue; }
     const p = n.path[0];
-    const dx = p.x - n.x, dy = p.y - n.y, d = Math.hypot(dx, dy), step = (n.npc === 'cat' ? 40 : SPEED * 0.9) * dt;
+    const dx = p.x - n.x, dy = p.y - n.y, d = Math.hypot(dx, dy), step = (n.npc === 'cat' ? 40 : SPEED * (n.age >= 3 ? 0.6 : 0.9)) * dt;
     n.moving = true;
     if (Math.abs(dx) > Math.abs(dy)) n.dir = dx > 0 ? 'right' : 'left'; else n.dir = dy > 0 ? 'down' : 'up';
     if (d <= step) { n.x = p.x; n.y = p.y; n.path.shift(); } else { n.x += dx / d * step; n.y += dy / d * step; }
@@ -2481,6 +2523,7 @@ function drawChar(c, t) {
     R(x - 7, by - 1 + sw, 2, 2, L.skin); R(x + 5, by - 1 - sw, 2, 2, L.skin);
     if (c.phase === 'break') { R(x + 5, by - 4, 3, 3, C.white); if (((t / 500) | 0) % 2) R(x + 6, by - 7, 1, 2, '#ffffff88'); }
     if (c.npc === 'pest') { R(x + 5, by - 4, 3, 3, C.white); R(x + 6, by - 3, 1, 1, C.red); } // la sua tazza
+    if (c.npc === 'elder') { R(x + 5, by - 6, 4, 6, '#7E2553'); R(x + 5, by - 6, 4, 1, C.yellow); R(x + 8, by - 5, 1, 4, C.white); } // il Libro della bottega
     if (c.npc === 'hr') { R(x + 5, by - 6, 4, 6, C.brown); R(x + 6, by - 5, 2, 4, C.white); R(x + 6, by - 7, 2, 1, C.lgrey); } // la cartellina dei richiami
   } else {
     R(x - 7, by - 7, 2, 4, L.shirt); R(x + 5, by - 7, 2, 4, L.shirt);
@@ -2572,6 +2615,7 @@ function updateBalloon(c) {
       e.stopPropagation();
       const b = e.target.closest('button[data-d]');
       if (b) { const ap = approvalFor(c.sid, c.id); if (ap) answerApproval(ap, b.dataset.d); return; }
+      if (c.npc === 'elder') return openElderBook(c);
       showInfo(c.sid, c.id);
     });
     overlay.appendChild(c.el);
@@ -2582,7 +2626,7 @@ function updateBalloon(c) {
   if (c.phase === 'break') action = tr('Pausa caffè: tocca a te!');
   if (c.errand) action = ERRAND_TEXT[c.errand.type] + (c.phase === 'errand' ? '' : '…');
   if (c.alert && status !== 'waiting') action = c.alert.text.replace(/^[A-Z0-9-]+ /, '').replace(/^: /, '');
-  if (c.npc) action = c.speech || (c.npc === 'pest' ? tr('Passavo di qui…') : c.npc === 'hr' ? tr('Ha un richiamo da consegnare') : c.npc === 'relax' ? c.doing : tr('Pulizie in corso'));
+  if (c.npc) action = c.speech || (c.npc === 'pest' ? tr('Passavo di qui…') : c.npc === 'hr' ? tr('Ha un richiamo da consegnare') : c.npc === 'elder' ? tr('Il Nonno: la memoria del progetto') : c.npc === 'relax' ? c.doing : tr('Pulizie in corso'));
   if (c.cheerUntil > performance.now() && c.role === 'boss' && floor && floor.s.party) action = tr('Evviva! {text}', { text: floor.s.party.text });
   const ap = c.npc ? null : approvalFor(c.sid, c.id);
   const gc = (groundFor(c) || {}).claim;
@@ -2787,6 +2831,8 @@ canvas.addEventListener('click', e => {
   let best = null;
   for (const c of chars.values()) if (Math.abs(wx - c.x) < 8 && wy < c.y + 2 && wy > c.y - 26) best = c;
   if (best) { showInfo(best.sid, best.id); return; }
+  const gpc = npcs.find(n => n.npc === 'elder' && Math.abs(wx - n.x) < 8 && wy < n.y + 2 && wy > n.y - 26);
+  if (gpc) return openElderBook(gpc);
   const cat = npcs.find(n => n.npc === 'cat');
   if (cat) {
     const cx = cat.phase === 'keys' && deskFor(cat.target) ? deskFor(cat.target).x + 12 : cat.x, cy = cat.phase === 'keys' && deskFor(cat.target) ? deskFor(cat.target).top + 24 : cat.y;
@@ -3024,6 +3070,8 @@ const SETTINGS_CHECKS = [
   ['nightAuto', tr('Luci basse e pulizie dopo le 20')],
   ['outfits', tr('Vestiti per feste, stagioni e meteo')],
   ['groundingAlerts', tr('Avvisi di ancoraggio: modifiche alla cieca e affermazioni smentite')],
+  ['elderEnabled', tr('Il Nonno racconta le lezioni del Libro della bottega')],
+  ['bottegaLearn', tr('Il Libro della bottega impara dalle sessioni (dal vivo e dall\'archivio)')],
 ];
 const SETTINGS_TEXTS = [
   ['pestName', tr('Nome del collega fastidioso'), 40, tr('Il nome del collega fastidioso')],

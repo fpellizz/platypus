@@ -120,5 +120,10 @@
   "{file} lo toccano in tanti: rileggilo prima di cambiarlo.": "Lots of people touch {file}: reread it before changing it.",
   "{file} non c'è: l'avete già cercato ({when}), forse ha cambiato nome.": "{file} isn't there: you already looked for it ({when}), maybe it was renamed.",
   "Quell'errore l'ha già sistemato {who} in {file} ({when}).": "{who} already fixed that error in {file} ({when}).",
-  "L'apprendimento del Libro della bottega è spento nelle opzioni.": "The Workshop book's learning is turned off in the options."
+  "L'apprendimento del Libro della bottega è spento nelle opzioni.": "The Workshop book's learning is turned off in the options.",
+  "memoria del progetto": "project memory",
+  "Nonno": "Grandpa",
+  "Il Nonno: la memoria del progetto": "Grandpa: the project's memory",
+  "Il Nonno racconta le lezioni del Libro della bottega": "Grandpa tells the lessons of the Workshop book",
+  "Il Libro della bottega impara dalle sessioni (dal vivo e dall'archivio)": "The Workshop book learns from sessions (live and from the archive)"
 }
