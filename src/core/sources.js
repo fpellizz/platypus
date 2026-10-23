@@ -173,10 +173,19 @@ class TranscriptWatcher {
 
   readNew(p, opts = {}) {
     const rec = this.files.get(p);
-    if (!rec || rec.ignored) return;
+    if (!rec) return;
     let fd;
     try {
       const st = fs.statSync(p);
+      if (rec.ignored) {
+        // un sottoagente vecchio o già concluso che riprende (es. SendMessage): da qui lo seguiamo dal vivo.
+        // Il suo passato è già nei token (accountPrefix fino a rec.offset); se il meta dice ancora "finito" è vecchio.
+        if (st.size <= rec.offset) return;
+        rec.ignored = false;
+        rec.partial = '';
+        rec.wokeAt = Date.now();
+        if (rec.meta) rec.meta = { ...rec.meta, finished: false };
+      }
       if (st.size < rec.offset) { rec.offset = 0; rec.partial = ''; } // file riscritto
       if (st.size === rec.offset) return;
       fd = fs.openSync(p, 'r');
@@ -210,6 +219,8 @@ class TranscriptWatcher {
       const m = readJson(rec.metaPath);
       if (!m) continue;
       rec.meta = normMeta(m);
+      // ripreso dopo la fine: un "finished" scritto prima della ripresa non vale più
+      if (rec.wokeAt && rec.meta.finished) { try { if (fs.statSync(rec.metaPath).mtimeMs <= rec.wokeAt) rec.meta.finished = false; } catch {} }
       const s = this.state.sessions.get(rec.sessionId);
       if (s && s.subs.has(rec.agentId)) this.state.applySubMeta(s, s.subs.get(rec.agentId), { ...rec.meta });
     }

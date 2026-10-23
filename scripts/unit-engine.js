@@ -4,6 +4,8 @@
 // archivio, mappa, libro. Tutto in memoria o in cartelle temporanee, mai sessioni vere.
 // Le richiama smoke-test.js (quindi anche npm test e le GitHub Actions); si possono lanciare anche da sole.
 
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
@@ -34,9 +36,62 @@ function quietSubTests(ok) {
   st.stop && st.stop();
 }
 
+// un sottoagente vecchio (o già concluso all'avvio) che viene ripreso, es. con SendMessage:
+// le righe nuove nello stesso file vanno lette, non ignorate per sempre
+function resumedSubTests(ok) {
+  const { OfficeState } = require(path.join(ROOT, 'src', 'core', 'state'));
+  const { TranscriptWatcher } = require(path.join(ROOT, 'src', 'core', 'sources'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-'));
+  try {
+    const pdir = path.join(tmp, 'projects', 'proj');
+    const now = Date.now();
+    const L = (sid, t, type, content) => JSON.stringify({ type, timestamp: iso(t), sessionId: sid, cwd: '/p', message: { role: type, content, ...(type === 'assistant' ? { id: 'm' + t + Math.random(), usage: { input_tokens: 1, output_tokens: 1 } } : {}) } }) + '\n';
+    const setup = (sid, { finished = false } = {}) => {
+      fs.mkdirSync(path.join(pdir, sid, 'subagents'), { recursive: true });
+      const main = path.join(pdir, sid + '.jsonl');
+      fs.writeFileSync(main, L(sid, now - 60000, 'user', 'ciao'));
+      const sub = path.join(pdir, sid, 'subagents', 'agent-ag1.jsonl');
+      fs.writeFileSync(sub, L(sid, now - 3600000, 'user', 'Analizza i moduli') + L(sid, now - 3599000, 'assistant', [{ type: 'text', text: 'Fatto.' }]));
+      fs.writeFileSync(sub.replace(/\.jsonl$/, '.meta.json'), JSON.stringify({ agentType: 'Explore', description: 'Analizza i moduli', finished }));
+      if (!finished) { const old = new Date(now - 3600000); fs.utimesSync(sub, old, old); }
+      return { main, sub, resume: () => fs.appendFileSync(sub, L(sid, now + 1000, 'user', 'Riprendi: controlla anche api/') + L(sid, now + 2000, 'assistant', [{ type: 'tool_use', id: 'r1', name: 'Read', input: { file_path: '/p/api/a.ts' } }])) };
+    };
+    // 1) la sessione è già seguita quando si trova il file vecchio del sottoagente (l'ordine dipende dal sistema)
+    {
+      const st = new OfficeState({});
+      const w = new TranscriptWatcher(st, { base: tmp });
+      const f = setup('sess-old-0001');
+      w.maybeTrack(f.main, true);
+      w.scan(true);
+      const tokBefore = st.sessions.get('sess-old-0001').tok.out;
+      f.resume();
+      w.pollTracked();
+      const s = st.sessions.get('sess-old-0001'), a = s && s.subs.get('ag1');
+      ok(a && !a.finished && a.status === 'working' && !w.files.get(f.sub).ignored, 'sottoagente vecchio ripreso: torna nel piano e lo seguiamo dal vivo');
+      ok(s.tok.out === tokBefore + 1, `i suoi token vecchi non si contano due volte (${tokBefore} → ${s.tok.out})`);
+      w.stop();
+    }
+    // 2) sottoagente già concluso quando si apre l'ufficio, poi ripreso
+    {
+      const st = new OfficeState({});
+      const w = new TranscriptWatcher(st, { base: tmp });
+      const f = setup('sess-fin-0001', { finished: true });
+      w.maybeTrack(f.main, true);
+      w.maybeTrack(f.sub, true);
+      f.resume();
+      w.pollTracked();
+      w.refreshMeta(); // il meta.json dice ancora "finished" (scritto prima della ripresa)
+      const a = st.sessions.get('sess-fin-0001').subs.get('ag1');
+      ok(a && !a.finished && a.status === 'working', 'sottoagente concluso all\'avvio e poi ripreso: di nuovo al lavoro, nonostante il vecchio «finished»');
+      w.stop();
+    }
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
   quietSubTests(ok);
+  resumedSubTests(ok);
 }
 
 module.exports = { run };
