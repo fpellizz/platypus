@@ -207,6 +207,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(projLine === "$PROJ = 'o''brien'", 'apici raddoppiati: ' + projLine);
   // senza cartella valida si torna al comportamento di sempre
   ok(osint.focusScriptWin(1, ['x'], null).includes("$PROJ = ''"), 'senza progetto non si filtra per titolo');
+  // la cartella passata a cmd.exe (per riaprire l'IDE): "&" e "," nel nome non devono diventare comandi
+  for (const name of ['R&D', 'x&md,pl-proof']) {
+    const dir = path.join(tmp, name);
+    fs.mkdirSync(dir, { recursive: true });
+    const args = osint.cmdArgs('echo', dir);
+    ok(args && args[3] === `"echo "${dir}""`, `cartella «${name}»: tra virgolette per cmd.exe`);
+    if (args && process.platform === 'win32') {
+      const r = spawnSync('cmd.exe', args, { cwd: tmp, windowsHide: true, windowsVerbatimArguments: true, encoding: 'utf8' });
+      ok(r.stdout.trim() === `"${dir}"` && !fs.existsSync(path.join(tmp, 'pl-proof')), `cartella «${name}»: cmd.exe riceve il percorso intero e non esegue altro`);
+    }
+  }
+  fs.mkdirSync(path.join(tmp, 'a%PATH%b'), { recursive: true });
+  ok(osint.cmdArgs('code', path.join(tmp, 'a%PATH%b')) === null, 'cartella con «%»: cmd.exe la espanderebbe, quindi non si usa');
 
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(failed ? `\n${failed} controlli falliti` : '\nTutto a posto.');
