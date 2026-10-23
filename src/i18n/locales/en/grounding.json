@@ -1,0 +1,6 @@
+{
+  "Demo: i file dei piani non esistono sul disco": "Demo: the floors' files don't exist on disk",
+  "Replay: il disco di oggi non è quello di allora": "Replay: today's disk isn't the disk of back then",
+  "Sessione Cowork: i suoi file non sono su questo disco": "Cowork session: its files aren't on this disk",
+  "La cartella della sessione non si legge da qui (WSL non montato, disco esterno o cartella cancellata)": "The session's folder can't be read from here (WSL not mounted, external drive or deleted folder)"
+}

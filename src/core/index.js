@@ -11,6 +11,7 @@
 //   POST /api/focus          {sid}   porta in primo piano la finestra della sessione
 //   POST /api/resume         {key}   riprende una sessione chiusa in un nuovo terminale
 //   POST /api/open-folder    {sid|key}
+//   GET  /api/grounding      {sid, aid, replay}  mappa contro territorio: ricordi scaduti, modifiche alla cieca
 
 const { dataDir } = require('../paths');
 const http = require('http');
@@ -20,6 +21,7 @@ const path = require('path');
 const { OfficeState, DEFAULT_SETTINGS, displayName } = require('./state');
 const worldmap = require('./worldmap');
 const semantic = require('./semantic');
+const grounding = require('./grounding');
 const { TranscriptWatcher, SessionRegistry, claudeDir, findCoworkBases } = require('./sources');
 const { Weather } = require('./weather');
 const { describeTool } = require('./describe');
@@ -215,6 +217,20 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
+  // mappa contro territorio di un agente (o di tutta la sessione): calcolata solo su richiesta
+  function agentGrounding(q) {
+    const isReplay = !!q.get('replay');
+    const st = isReplay ? (replay && replay.state) : state;
+    const s = st && st.sessions.get(q.get('sid') || '');
+    if (!s) return { ok: false };
+    const aid = q.get('aid') || 'main';
+    const agents = [s.main, ...s.subs.values()].filter(a => a.world).map(a => ({ id: a.id, name: displayName(a), world: a.world }));
+    const only = aid === 'all' ? null : new Set([aid]);
+    try {
+      return { ok: true, sid: s.id, aid, now: st.now(), ...grounding.checkStale(s, agents, s.cwd, { only, replay: isReplay }), ghosts: [], claims: [], score: null };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+
   function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); }
   function liveIds() { return new Set([...state.sessions.values()].filter(s => !s.ended).map(s => s.id)); }
 
@@ -353,6 +369,7 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     if (url.pathname === '/api/cowork-scan') return json(res, 200, state.coworkScan || {});
     if (url.pathname === '/api/agentmap') return json(res, 200, agentMap(url.searchParams));
     if (url.pathname === '/api/agentmind') return json(res, 200, agentMind(url.searchParams));
+    if (url.pathname === '/api/grounding') return json(res, 200, agentGrounding(url.searchParams));
     if (url.pathname === '/api/stats/costs') return json(res, 200, stats.costHistory(Math.min(90, Number(url.searchParams.get('days')) || 14)));
     if (url.pathname === '/api/stats/honors') return json(res, 200, stats.honors());
     if (url.pathname === '/api/report') {

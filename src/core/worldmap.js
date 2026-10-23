@@ -19,6 +19,11 @@ const WINDOW = 8;
 const MAX_STEPS = 500, MAX_NODES = 6000;
 // livello di conoscenza di un luogo: 1 visto di sfuggita (frontiera), 2 letto, 3 modificato
 const LV = { seen: 1, read: 2, edit: 3 };
+const MAX_EDITS = 20;
+// Claude Code rifiuta la modifica di un file cambiato dopo l'ultima lettura: il ricordo scaduto è preso in tempo
+const STALE_ERR = /modified since (it was )?(last )?read|has been (unexpectedly )?modified|changed since (it was )?(last )?read/i;
+// i luoghi che sono file del progetto (non comandi, siti, sottoagenti o file fuori dalla cartella)
+function isProjectFile(key) { return !!key && key !== '.' && !/^(abs|web|cmd|agent|tool):/.test(key); }
 
 function normSlashes(p) { return String(p || '').replace(/\\/g, '/').replace(/\/+$/, ''); }
 // percorso relativo alla cartella della sessione; fuori dal progetto diventa "abs:<percorso>"
@@ -100,7 +105,7 @@ function listedPaths(text, r) {
 
 class AgentWorld {
   constructor() {
-    this.nodes = new Map(); // key -> {seen, read, edit, created, n, last}
+    this.nodes = new Map(); // key -> {seen, read, edit, created, n, last, lastSync, edits}
     this.steps = [];
     this.open = new Map();  // toolUseId -> step
     this.shellCwd = null;   // cartella corrente della shell dell'agente
@@ -111,7 +116,9 @@ class AgentWorld {
     const fresh = !n;
     if (!n) {
       if (this.nodes.size >= MAX_NODES) return null;
-      n = { seen: 0, read: 0, edit: 0, created: false, n: 0, last: 0 };
+      // lastSync: ultimo esito riuscito che gli ha mostrato il contenuto vero (lettura o sua modifica)
+      // edits: quando le sue modifiche sono riuscite (servono a dire "cambiato da …" agli altri agenti)
+      n = { seen: 0, read: 0, edit: 0, created: false, n: 0, last: 0, lastSync: 0, edits: [] };
       this.nodes.set(key, n);
     }
     if (level >= LV.seen && !n.seen) n.seen = t;
@@ -165,6 +172,8 @@ class AgentWorld {
     }
     if (act === 'read' || act === 'edit') sig = name + ':' + target;
     const step = { id, t, tool: name, act, target, isNew, sig, err: null, ctx: ctx || 0, vec: null, phase: '' };
+    // per le modifiche: l'ultimo contatto col file prima di questa (serve a scoprire le modifiche alla cieca)
+    if (act === 'edit' && isProjectFile(target)) { const nd = this.nodes.get(target); step.prevSync = nd ? nd.lastSync : 0; }
     this.steps.push(step);
     if (this.steps.length > MAX_STEPS) this.steps.splice(0, this.steps.length - MAX_STEPS);
     if (id) this.open.set(id, step);
@@ -188,7 +197,15 @@ class AgentWorld {
         const from = step.target.startsWith('abs:') ? null : step.target;
         if (from) for (const p of referencesIn(text, from)) this.touch(p, LV.seen, t);
       }
-    }
+      // fa fede l'esito: da qui l'agente conosce il contenuto vero del file
+      if ((step.act === 'read' || step.act === 'edit') && isProjectFile(step.target)) {
+        const nd = this.nodes.get(step.target);
+        if (nd) {
+          nd.lastSync = t;
+          if (step.act === 'edit') { nd.edits.push(t); if (nd.edits.length > MAX_EDITS) nd.edits.shift(); }
+        }
+      }
+    } else if (step.act === 'edit' && STALE_ERR.test(resultText(block, line))) step.staleErr = true;
     const i = this.steps.lastIndexOf(step);
     if (i >= 0) this.compute(i);
   }
@@ -300,4 +317,4 @@ function resolveAgainstTree(nodes, tree) {
   return [...merged.values()];
 }
 
-module.exports = { mainCommand, AgentWorld, scanTree, resolveAgainstTree, relKey, referencesIn, listedPaths, pathsInCommand, DIMS, phaseOf };
+module.exports = { mainCommand, AgentWorld, scanTree, resolveAgainstTree, relKey, referencesIn, listedPaths, pathsInCommand, isProjectFile, DIMS, phaseOf };
