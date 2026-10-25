@@ -246,6 +246,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       ok(r.stdout.trim() === `"${dir}"` && !fs.existsSync(path.join(tmp, 'pl-proof')), `cartella «${name}»: cmd.exe riceve il percorso intero e non esegue altro`);
     }
   }
+  // «Riprendi»: Windows Terminal separa i sottocomandi con ";" (anche dentro -d), quindi una cartella con ";" passa da cmd
+  const semi = path.join(tmp, 'x;calc');
+  ok(osint.resumeWin(path.join(tmp, 'R&D'), 'abcd-1234', true).how === 'wt' && osint.resumeWin(semi, 'abcd-1234', true).how === 'cmd', 'Riprendi: cartella con «;» non va a Windows Terminal');
+  if (process.platform === 'win32') {
+    // la riga per cmd con "echo" al posto di "start": & e ; nel nome restano lettere
+    for (const name of ['R&D', 'x;calc', 'y&md,pl-proof']) {
+      const dir = path.join(tmp, name);
+      fs.mkdirSync(dir, { recursive: true });
+      const line = osint.resumeWin(dir, 'abcd-1234', false).args[1].replace(/^start "Claude Code" \/D/, 'echo');
+      const r = spawnSync('cmd.exe', ['/c', line], { cwd: tmp, windowsHide: true, windowsVerbatimArguments: true, encoding: 'utf8' });
+      ok(r.stdout.trim() === `"${dir}" cmd /k claude --resume abcd-1234` && !fs.existsSync(path.join(tmp, 'pl-proof')), `Riprendi con cmd, cartella «${name}»: arriva intera, nessun altro comando`);
+    }
+  }
   fs.mkdirSync(path.join(tmp, 'a%PATH%b'), { recursive: true });
   ok(osint.cmdArgs('code', path.join(tmp, 'a%PATH%b')) === null, 'cartella con «%»: cmd.exe la espanderebbe, quindi non si usa');
 

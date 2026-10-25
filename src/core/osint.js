@@ -270,19 +270,23 @@ async function macAppOf(pid) {
   return null;
 }
 
+// Windows: come lanciare "claude --resume <id>" nella cartella (cwd e id già validati: niente virgolette, id alfanumerico).
+// Windows Terminal usa ";" per separare i suoi sottocomandi anche dentro -d: una cartella con ";" nel nome
+// farebbe partire come comando il resto del nome. Per quelle si passa da cmd, dove la cartella sta tra virgolette.
+function resumeWin(cwd, id, hasWt) {
+  if (hasWt && !cwd.includes(';')) return { how: 'wt', cmd: 'wt.exe', args: ['-d', cwd, 'cmd', '/k', 'claude', '--resume', id], verbatim: false };
+  return { how: 'cmd', cmd: 'cmd.exe', args: ['/c', `start "Claude Code" /D "${cwd}" cmd /k claude --resume ${id}`], verbatim: true };
+}
+
 // apre un nuovo terminale nella cartella giusta con "claude --resume <id>"
 async function resumeSession({ cwd, id }) {
   if (!/^[A-Za-z0-9-]{8,80}$/.test(id || '')) return { ok: false, reason: tr('Id di sessione non valido.') };
   if (!safeDir(cwd)) return { ok: false, reason: tr('La cartella del progetto non esiste più.') };
   if (process.platform === 'win32') {
     const wt = await run('where.exe', ['wt.exe'], 3000);
-    if (!wt.err && wt.out) {
-      spawn('wt.exe', ['-d', cwd, 'cmd', '/k', 'claude', '--resume', id], { detached: true, stdio: 'ignore' }).unref();
-      return { ok: true, how: 'wt' };
-    }
-    // cwd e id sono già validati (niente virgolette né caratteri speciali)
-    spawn('cmd.exe', ['/c', `start "Claude Code" /D "${cwd}" cmd /k claude --resume ${id}`], { detached: true, stdio: 'ignore', windowsVerbatimArguments: true }).unref();
-    return { ok: true, how: 'cmd' };
+    const r = resumeWin(cwd, id, !wt.err && !!wt.out);
+    spawn(r.cmd, r.args, { detached: true, stdio: 'ignore', windowsVerbatimArguments: r.verbatim }).unref();
+    return { ok: true, how: r.how };
   }
   if (process.platform === 'darwin') {
     const cmd = `cd ${JSON.stringify(cwd)} && claude --resume ${id}`;
@@ -316,4 +320,4 @@ function openFolder(cwd) {
   return { ok: true };
 }
 
-module.exports = { focusSession, resumeSession, openFolder, focusScriptWin, cmdArgs };
+module.exports = { focusSession, resumeSession, openFolder, focusScriptWin, cmdArgs, resumeWin };
