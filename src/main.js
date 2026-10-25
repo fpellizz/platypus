@@ -7,6 +7,7 @@ const fs = require('fs');
 const { startCore } = require('./core');
 const autostart = require('./autostart');
 const { fitBounds } = require('./bounds');
+const { isOwnUrl, isExternalUrl } = require('./urls');
 const { tr, trn, money } = require('./i18n');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
@@ -83,8 +84,14 @@ function createWindow() {
   win.on('focus', () => win.flashFrame(false));
   win.on('close', () => { quitting = true; });
   win.on('closed', () => { win = null; });
-  // eventuali link esterni nel browser, mai dentro l'app
-  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  // eventuali link esterni nel browser (solo http/https), mai dentro l'app
+  win.webContents.setWindowOpenHandler(({ url }) => { if (isExternalUrl(url)) shell.openExternal(url); return { action: 'deny' }; });
+  // la finestra resta sulle pagine dell'ufficio: un'altra pagina avrebbe a disposizione l'API del preload
+  win.webContents.on('will-navigate', (e, url) => {
+    if (isOwnUrl(url, core.port)) return;
+    e.preventDefault();
+    if (isExternalUrl(url)) shell.openExternal(url);
+  });
 }
 
 function showWindow() {

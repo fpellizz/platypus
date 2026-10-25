@@ -176,8 +176,19 @@ function boundsTests(ok) {
   ok(big.width === 1920 && big.height === 1160, 'dimensioni più grandi dello schermo principale: ridotte');
 }
 
+// finestra: cosa resta dentro l'ufficio e cosa si apre nel browser
+function urlTests(ok) {
+  const { isOwnUrl, isExternalUrl } = require(path.join(ROOT, 'src', 'urls'));
+  ok(isOwnUrl('http://127.0.0.1:47800/report', 47800) && isOwnUrl('http://localhost:47800/', 47800), 'le pagine dell\'ufficio restano nella finestra');
+  ok(!isOwnUrl('http://127.0.0.1:3000/', 47800) && !isOwnUrl('https://127.0.0.1:47800/', 47800) && !isOwnUrl('http://evil.example/', 47800), 'altre porte, https e altri siti: non sono l\'ufficio');
+  ok(isExternalUrl('https://github.com/m4xl4b/platypus/pull/9') && isExternalUrl('http://127.0.0.1:47800/report'), 'http e https si aprono nel browser');
+  const bad = ['file:///C:/Windows/System32/calc.exe', 'smb://host/share', 'ms-msdt:/id', 'vscode://x', 'javascript:alert(1)', 'https://user:pw@example.com/', 'not a url'];
+  ok(bad.every(u => !isExternalUrl(u)), 'file:, smb:, protocolli di altre app, javascript: e credenziali nell\'indirizzo: mai a openExternal');
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
+  urlTests(ok);
   boundsTests(ok);
   forgetTests(ok);
   quietSubTests(ok);
