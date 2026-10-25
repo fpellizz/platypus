@@ -208,8 +208,40 @@ function nodeVersionTests(ok) {
   ok(!['20.20.2', '22.11.0', '18.20.0', 'v20.0.0'].some(windowNodeOk), 'Node.js 20, 22.11 e 18: solo modalità browser');
 }
 
+// lavagna B: il piano arriva dal file che Claude Code scrive (ExitPlanMode non lo passa più nell'input)
+function planBoardTests(ok) {
+  const { OfficeState, parsePlan, isPlanFile } = require(path.join(ROOT, 'src', 'core', 'state'));
+  let now = Date.parse('2026-10-25T10:00:00Z');
+  const st = new OfficeState({ clock: () => now, settings: {} });
+  const S = 'sess-plan-0001';
+  let k = 0;
+  const use = (name, input) => { const id = 'p' + (++k); now += 1000; st.applyTranscriptLine(S, null, { type: 'assistant', timestamp: iso(now), cwd: '/p', message: { id: 'm' + k, role: 'assistant', content: [{ type: 'tool_use', id, name, input }], usage: { input_tokens: 1, output_tokens: 1 } } }); return id; };
+  const result = (id, content, extra = {}) => { now += 500; st.applyTranscriptLine(S, null, { type: 'user', timestamp: iso(now), cwd: '/p', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content }] }, ...extra }); };
+  const file = 'C:\\Users\\me\\.claude\\plans\\shiny-plan.md';
+  const plan = '# Rifare il login\n\n## Contesto\nIl login usa ancora le sessioni.\n\n## Passi\n1. Togliere **session.ts**\n2. Aggiungere i token\n3. Test e2e\n\n## Verifica\n- npm test';
+  result(use('Write', { file_path: file, content: plan }), 'File created');
+  result(use('Edit', { file_path: file, old_string: '2. Aggiungere i token', new_string: '2. Aggiungere i token JWT' }), 'ok');
+  const s = st.sessions.get(S);
+  ok(!s.plan, 'mentre Claude scrive il piano la lavagna non cambia ancora');
+  use('ExitPlanMode', {});
+  ok(s.plan && s.plan.title === 'Rifare il login' && JSON.stringify(s.plan.steps) === JSON.stringify(['Togliere session.ts', 'Aggiungere i token JWT', 'Test e2e']), `ExitPlanMode senza contenuto: piano dal file, con la Edit (${s.plan && s.plan.steps.join(' · ')})`);
+  // il risultato con il piano approvato (modificato dall'utente) vince
+  const id2 = use('ExitPlanMode', {});
+  result(id2, 'User has approved your plan.\n\n## Approved Plan:\n# Rifare il login\n1. Token\n2. Test');
+  ok(s.plan.steps.join('|') === 'Token|Test', 'piano approvato nel risultato: la lavagna mostra quello');
+  // le versioni vecchie: il piano nell'input
+  use('ExitPlanMode', { plan: '# Vecchio stile\n## Uno\n## Due' });
+  ok(s.plan.title === 'Vecchio stile' && s.plan.steps.join('|') === 'Uno|Due', 'versioni vecchie: piano nell\'input');
+  ok(isPlanFile('/home/u/.claude/plans/a.md') && isPlanFile(file) && !isPlanFile('/home/u/proj/docs/plans/2.9.md'), 'solo i piani di Claude Code, non i docs/plans del progetto');
+  const p = parsePlan('# Titolo\n## Contesto\n## Modifiche\n### 1. Primo [link](http://x)\n### 2. Secondo `codice`\n## Verifica');
+  ok(p.steps.join('|') === 'Primo link|Secondo codice', 'passi numerati anche nei titoli, senza markdown: ' + p.steps.join(' · '));
+  ok(parsePlan('# T\n## Analisi\n## Refresh\n## Test').steps.join('|') === 'Analisi|Refresh|Test', 'senza numeri: i titoli ##');
+  st.stop && st.stop();
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
+  planBoardTests(ok);
   nodeVersionTests(ok);
   dataDirTests(ok);
   urlTests(ok);
