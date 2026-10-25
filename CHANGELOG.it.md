@@ -4,6 +4,22 @@ Le versioni di Platypus (fino alla 2.7 si chiamava Agent Office), dalla più rec
 
 *English version: [CHANGELOG.md](CHANGELOG.md).*
 
+## 2.9.1: correzioni
+
+Correzioni dei bug trovati con un giro di debug su tutta l'app, ognuna con una prova automatica.
+
+- **Il server non cade più** con un indirizzo malformato (come `/%`), che poteva mandare qualsiasi pagina web aperta nel browser.
+- **Sottoagenti**:
+  - chi pensa a lungo (per esempio mentre scrive un file grande) non esce più dall'ufficio come finito per rientrare come agente nuovo: il suo compito si conta una volta sola;
+  - chi viene ripreso dopo una lunga pausa (con SendMessage o in un team) ricompare in ufficio, con i suoi token nuovi.
+- **Archivio**: durata e titolo giusti per le sessioni il cui file sta fra 64 e 256 KB.
+- **Mappa della realtà su Windows**:
+  - i file raggiunti dai comandi di Git Bash (`cd /d/dev/...`) ora stanno nel progetto, negli stessi luoghi di Read;
+  - in una cartella con uno spazio nel nome (come `C:\Users\Mario Rossi\...`) la mappa segue la shell fino alla cartella giusta.
+- **Libro della bottega**: una lezione dimenticata non torna più da sola dopo un minuto; la fanno ripartire solo casi nuovi.
+- **Windows**: una cartella del progetto con `&` nel nome (come `R&D`) non rompe più la riapertura dell'IDE, e un nome preparato apposta non può più eseguire un comando.
+- **Finestra**: se l'ultima volta stava su un monitor che ora non c'è, si apre al centro dello schermo invece che fuori.
+
 ## 2.9: mappa e territorio, sorpresa e cause, il Libro della bottega
 
 Platypus non può guardare dentro la testa del modello, ma vede sia la mappa dell'agente (quello che ha letto, detto e fatto) sia il territorio (il disco, gli esiti dei comandi). Questa versione misura la distanza tra le due cose. Tutto è ricostruito dai fatti, resta sul computer, e i giudizi incerti si mostrano come tali.

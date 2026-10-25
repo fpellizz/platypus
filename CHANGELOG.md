@@ -4,6 +4,22 @@ Platypus releases (up to 2.7 it was called Agent Office), newest first.
 
 *Versione italiana: [CHANGELOG.it.md](CHANGELOG.it.md).*
 
+## 2.9.1: fixes
+
+Fixes for the bugs found by a debug pass over the whole app, each with an automated test.
+
+- **The server no longer crashes** on a malformed address (such as `/%`), which any web page open in the browser could send.
+- **Subagents**:
+  - one that thinks for a while (for example while writing a long file) no longer leaves the office as finished and comes back as a new agent: its task is counted once;
+  - one resumed after a long pause (with SendMessage or in a team) shows up in the office again, with its new tokens.
+- **Archive**: the right length and title for sessions whose file is between 64 and 256 KB.
+- **Map of reality on Windows**:
+  - files reached by Git Bash commands (`cd /d/dev/...`) are now inside the project, the same places as with Read;
+  - in a folder with a space in its name (such as `C:\Users\Mario Rossi\...`) the map follows the shell back to the right folder.
+- **Workshop book**: a forgotten lesson no longer comes back by itself a minute later; only new cases start it again.
+- **Windows**: a project folder with `&` in its name (such as `R&D`) no longer breaks reopening the IDE, and a specially crafted name can no longer run a command.
+- **Window**: if it was last on a monitor that is no longer connected, it opens in the middle of the screen instead of off-screen.
+
 ## 2.9: map and territory, surprise and causes, the Workshop book
 
 Platypus can't look inside the model's head, but it sees both the agent's map (what it read, said and did) and the territory (the disk, the outcomes of commands). This version measures the distance between the two. Everything is rebuilt from facts, stays on the computer, and uncertain verdicts are shown as such.
