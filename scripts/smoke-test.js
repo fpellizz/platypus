@@ -202,6 +202,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     let d = ''; s.on('data', c => { d += c; }); s.on('end', () => resolve(d.split('\r\n')[0])); s.on('error', e => resolve(e.code));
   });
   ok(/ 400 /.test(absForm) && (await get(port, '/api/settings')).status === 200, `GET http://[ → ${absForm}, il server risponde ancora`);
+  // una cartella accanto a renderer/ con lo stesso inizio del nome non si serve
+  const sibling = path.join(ROOT, 'renderer-smoke-' + process.pid);
+  fs.mkdirSync(sibling, { recursive: true });
+  fs.writeFileSync(path.join(sibling, 'secret.txt'), 'segreto');
+  const sib = await get(port, `/..%2F${path.basename(sibling)}%2Fsecret.txt`);
+  fs.rmSync(sibling, { recursive: true, force: true });
+  ok(sib.status === 403 && !sib.body.includes('segreto'), `cartella sorella di renderer/ (${path.basename(sibling)}) → ${sib.status}`);
   const nul = await get(port, '/%00');
   const nul2 = await get(port, '/index.html%00.js');
   ok(nul.status === 400 && nul2.status === 400 && (await get(port, '/api/settings')).status === 200, `byte nullo nel percorso (GET /%00) → ${nul.status}, ${nul2.status}, il server risponde ancora`);

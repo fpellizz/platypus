@@ -479,7 +479,8 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     // un byte nullo farebbe lanciare fs.readFile (e cadere il server): basta un <img src=".../%00"> in una pagina web
     if (rel.includes('\0')) { res.writeHead(400); return res.end(); }
     const file = path.normalize(path.join(RENDERER, rel));
-    if (!file.startsWith(RENDERER)) { res.writeHead(403); return res.end(); }
+    // dentro renderer/ e basta: senza il separatore passerebbe anche una cartella sorella come renderer-old/
+    if (!file.startsWith(RENDERER + path.sep)) { res.writeHead(403); return res.end(); }
     fs.readFile(file, (err, data) => {
       if (err) { res.writeHead(404); return res.end('404'); }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
