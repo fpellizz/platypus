@@ -29,12 +29,18 @@ function say(msg) { console.log('[platypus] ' + msg); }
 function fail(msg) { console.error('[platypus] ' + msg); process.exitCode = 1; }
 
 // ---------------------------------------------------------------- requisiti
+const { WINDOW_NODE, windowNodeOk } = require('./requirements');
 const [major] = process.versions.node.split('.').map(Number);
 if (major < 18) {
-  fail(`Serve Node.js 20 o più recente (hai la ${process.versions.node}). Scaricalo da https://nodejs.org  ·  Node.js 20 or newer is required.`);
+  fail(`Serve Node.js ${WINDOW_NODE} o più recente (hai la ${process.versions.node}). Scaricalo da https://nodejs.org  ·  Node.js ${WINDOW_NODE} or newer is required.`);
   process.exit(1);
 }
-if (major < 20) say(`Node.js ${process.versions.node}: funziona, ma è consigliato il 20 o più recente.`);
+// la finestra (Electron) vuole Node.js 22.12+; con versioni più vecchie resta la modalità browser
+const nodeForWindow = windowNodeOk(process.versions.node);
+if (!nodeForWindow) {
+  say(`Node.js ${process.versions.node}: la finestra desktop richiede Node.js ${WINDOW_NODE} o più recente, e questa versione non riceve più aggiornamenti di sicurezza. Aggiornalo da https://nodejs.org`);
+  say(`Node.js ${process.versions.node}: the desktop window needs Node.js ${WINDOW_NODE} or newer, and this version no longer gets security updates. Update it from https://nodejs.org`);
+}
 
 // ---------------------------------------------------------------- dipendenze
 function lockHash() {
@@ -112,6 +118,7 @@ function logText() { try { return fs.readFileSync(LOG, 'utf8'); } catch { return
 
 async function runDesktop() {
   if (!canShowWindow()) { say('Nessuno schermo grafico (DISPLAY/WAYLAND_DISPLAY): passo alla modalità browser.'); return runWeb(); }
+  if (!nodeForWindow) { say('Intanto apro la modalità browser, che funziona anche con questa versione.'); return runWeb(); }
   if (!depsOk() && !installDeps()) { say('Senza le dipendenze apro la modalità browser, che non ne ha bisogno.'); return runWeb(); }
   const background = has('--background');
   const extra = [];
@@ -138,6 +145,7 @@ async function runDesktop() {
 
 // ---------------------------------------------------------------- main
 (async () => {
+  if ((has('--setup') || has('--shortcut')) && !nodeForWindow) process.exit(1); // Electron non si installa: il motivo è già scritto sopra
   if (has('--setup')) { process.exit(depsOk() || installDeps() ? 0 : 1); }
   if (has('--shortcut')) {
     if (!depsOk() && !installDeps()) process.exit(1);

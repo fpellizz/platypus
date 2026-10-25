@@ -184,6 +184,40 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     req.on('error', () => resolve(0)); req.end();
   });
   ok(bad === 403, 'richieste da altri host rifiutate → ' + bad);
+  // una pagina su un'altra porta di localhost (dev server, notebook) non deve poter usare le API dell'ufficio
+  const fromOrigin = (origin, p, body) => new Promise(resolve => {
+    const req = http.request({ host: '127.0.0.1', port, path: p, method: 'POST', headers: { Origin: origin, 'Content-Type': 'text/plain' } }, res => { res.resume(); resolve(res.statusCode); });
+    req.on('error', () => resolve(0)); req.end(body);
+  });
+  const dirsBefore = core.state.settings.claudeDirs;
+  const foreign = await fromOrigin('http://localhost:3000', '/api/settings', JSON.stringify({ claudeDirs: '\\\\attacker.example\\share' }));
+  const foreign2 = await fromOrigin('http://127.0.0.1:5173', '/api/demo', '{"on":false}');
+  ok(foreign === 403 && foreign2 === 403 && core.state.settings.claudeDirs === dirsBefore, `POST da un'altra porta di localhost rifiutato → ${foreign}, ${foreign2}`);
+  const own = await fromOrigin(`http://127.0.0.1:${port}`, '/api/settings', '{}');
+  const ownLocal = await fromOrigin(`http://localhost:${port}`, '/api/settings', '{}');
+  ok(own === 200 && ownLocal === 200, `POST dalla pagina dell'ufficio (127.0.0.1 e localhost, stessa porta) → ${own}, ${ownLocal}`);
+  // indirizzo in forma assoluta non valido, scritto a mano sul socket (un browser non lo manda, un programma sì)
+  const absForm = await new Promise(resolve => {
+    const s = require('net').connect(port, '127.0.0.1', () => s.write(`GET http://[ HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: close\r\n\r\n`));
+    let d = ''; s.on('data', c => { d += c; }); s.on('end', () => resolve(d.split('\r\n')[0])); s.on('error', e => resolve(e.code));
+  });
+  ok(/ 400 /.test(absForm) && (await get(port, '/api/settings')).status === 200, `GET http://[ → ${absForm}, il server risponde ancora`);
+  // pagine con la CSP (niente script esterni o in linea) e mai dentro un iframe di un'altra pagina
+  const head = await new Promise(resolve => { http.get({ host: '127.0.0.1', port, path: '/' }, res => { res.resume(); resolve(res.headers); }).on('error', () => resolve({})); });
+  const csp = head['content-security-policy'] || '';
+  ok(/script-src 'self'(;|$)/.test(csp) && /frame-ancestors 'none'/.test(csp) && head['x-frame-options'] === 'DENY' && head['x-content-type-options'] === 'nosniff', 'pagina dell\'ufficio: CSP con script solo dal server, niente iframe, nosniff');
+  const inline = fs.readdirSync(path.join(ROOT, 'renderer')).filter(f => f.endsWith('.html')).filter(f => /<script(?![^>]*\ssrc=)[^>]*>/i.test(fs.readFileSync(path.join(ROOT, 'renderer', f), 'utf8')) || / on[a-z]+=["']/i.test(fs.readFileSync(path.join(ROOT, 'renderer', f), 'utf8')));
+  ok(!inline.length, 'nessuno script in linea nelle pagine (la CSP li bloccherebbe)' + (inline.length ? ': ' + inline.join(', ') : ''));
+  // una cartella accanto a renderer/ con lo stesso inizio del nome non si serve
+  const sibling = path.join(ROOT, 'renderer-smoke-' + process.pid);
+  fs.mkdirSync(sibling, { recursive: true });
+  fs.writeFileSync(path.join(sibling, 'secret.txt'), 'segreto');
+  const sib = await get(port, `/..%2F${path.basename(sibling)}%2Fsecret.txt`);
+  fs.rmSync(sibling, { recursive: true, force: true });
+  ok(sib.status === 403 && !sib.body.includes('segreto'), `cartella sorella di renderer/ (${path.basename(sibling)}) → ${sib.status}`);
+  const nul = await get(port, '/%00');
+  const nul2 = await get(port, '/index.html%00.js');
+  ok(nul.status === 400 && nul2.status === 400 && (await get(port, '/api/settings')).status === 200, `byte nullo nel percorso (GET /%00) → ${nul.status}, ${nul2.status}, il server risponde ancora`);
   const malformed = await get(port, '/%');
   const stillUp = await get(port, '/api/settings');
   ok(malformed.status === 400 && stillUp.status === 200, `URL malformato (GET /%) → ${malformed.status}, il server risponde ancora → ${stillUp.status}`);
@@ -216,6 +250,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     if (args && process.platform === 'win32') {
       const r = spawnSync('cmd.exe', args, { cwd: tmp, windowsHide: true, windowsVerbatimArguments: true, encoding: 'utf8' });
       ok(r.stdout.trim() === `"${dir}"` && !fs.existsSync(path.join(tmp, 'pl-proof')), `cartella «${name}»: cmd.exe riceve il percorso intero e non esegue altro`);
+    }
+  }
+  // «Riprendi»: Windows Terminal separa i sottocomandi con ";" (anche dentro -d), quindi una cartella con ";" passa da cmd
+  const semi = path.join(tmp, 'x;calc');
+  ok(osint.resumeWin(path.join(tmp, 'R&D'), 'abcd-1234', true).how === 'wt' && osint.resumeWin(semi, 'abcd-1234', true).how === 'cmd', 'Riprendi: cartella con «;» non va a Windows Terminal');
+  if (process.platform === 'win32') {
+    // la riga per cmd con "echo" al posto di "start": & e ; nel nome restano lettere
+    for (const name of ['R&D', 'x;calc', 'y&md,pl-proof']) {
+      const dir = path.join(tmp, name);
+      fs.mkdirSync(dir, { recursive: true });
+      const line = osint.resumeWin(dir, 'abcd-1234', false).args[1].replace(/^start "Claude Code" \/D/, 'echo');
+      const r = spawnSync('cmd.exe', ['/c', line], { cwd: tmp, windowsHide: true, windowsVerbatimArguments: true, encoding: 'utf8' });
+      ok(r.stdout.trim() === `"${dir}" cmd /k claude --resume abcd-1234` && !fs.existsSync(path.join(tmp, 'pl-proof')), `Riprendi con cmd, cartella «${name}»: arriva intera, nessun altro comando`);
     }
   }
   fs.mkdirSync(path.join(tmp, 'a%PATH%b'), { recursive: true });

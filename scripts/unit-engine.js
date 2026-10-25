@@ -176,8 +176,43 @@ function boundsTests(ok) {
   ok(big.width === 1920 && big.height === 1160, 'dimensioni più grandi dello schermo principale: ridotte');
 }
 
+// finestra: cosa resta dentro l'ufficio e cosa si apre nel browser
+function urlTests(ok) {
+  const { isOwnUrl, isExternalUrl } = require(path.join(ROOT, 'src', 'urls'));
+  ok(isOwnUrl('http://127.0.0.1:47800/report', 47800) && isOwnUrl('http://localhost:47800/', 47800), 'le pagine dell\'ufficio restano nella finestra');
+  ok(!isOwnUrl('http://127.0.0.1:3000/', 47800) && !isOwnUrl('https://127.0.0.1:47800/', 47800) && !isOwnUrl('http://evil.example/', 47800), 'altre porte, https e altri siti: non sono l\'ufficio');
+  ok(isExternalUrl('https://github.com/m4xl4b/platypus/pull/9') && isExternalUrl('http://127.0.0.1:47800/report'), 'http e https si aprono nel browser');
+  const bad = ['file:///C:/Windows/System32/calc.exe', 'smb://host/share', 'ms-msdt:/id', 'vscode://x', 'javascript:alert(1)', 'https://user:pw@example.com/', 'not a url'];
+  ok(bad.every(u => !isExternalUrl(u)), 'file:, smb:, protocolli di altre app, javascript: e credenziali nell\'indirizzo: mai a openExternal');
+}
+
+// ~/.platypus contiene progetti, comandi ed estratti degli errori: su Linux e macOS solo il proprietario la legge
+function dataDirTests(ok) {
+  if (process.platform === 'win32') { console.log('  --   permessi di ~/.platypus: solo Linux e macOS, controllo saltato'); return; }
+  const { execFileSync } = require('child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-'));
+  try {
+    // in un processo a parte: la home è quella temporanea, la cartella esiste già con i permessi di prima
+    fs.mkdirSync(path.join(tmp, '.platypus'), { mode: 0o755 });
+    fs.chmodSync(path.join(tmp, '.platypus'), 0o755);
+    execFileSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(ROOT, 'src', 'paths'))}).dataDir()`], { env: { ...process.env, HOME: tmp } });
+    const mode = fs.statSync(path.join(tmp, '.platypus')).mode & 0o777;
+    ok(mode === 0o700, `~/.platypus solo per il proprietario (permessi ${mode.toString(8)})`);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
+// lanciatore: con quali versioni di Node.js si apre la finestra (Electron 44 vuole la 22.12)
+function nodeVersionTests(ok) {
+  const { windowNodeOk } = require(path.join(ROOT, 'scripts', 'requirements'));
+  ok(['22.12.0', 'v22.23.4', '24.13.0', '25.0.0'].every(windowNodeOk), 'Node.js 22.12, 22.23, 24 e 25: finestra desktop');
+  ok(!['20.20.2', '22.11.0', '18.20.0', 'v20.0.0'].some(windowNodeOk), 'Node.js 20, 22.11 e 18: solo modalità browser');
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
+  nodeVersionTests(ok);
+  dataDirTests(ok);
+  urlTests(ok);
   boundsTests(ok);
   forgetTests(ok);
   quietSubTests(ok);

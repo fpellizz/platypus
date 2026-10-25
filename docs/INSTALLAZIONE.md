@@ -17,7 +17,7 @@ Platypus si usa direttamente dai sorgenti: si clona il repository e si lancia. N
 
 | | |
 |---|---|
-| **Node.js** | 20 o più recente (LTS consigliata). Il 18 funziona ma non è più supportato. |
+| **Node.js** | 22.12 o più recente (LTS consigliata). Con versioni più vecchie (Node.js 20 non riceve più aggiornamenti di sicurezza) il lanciatore apre solo la modalità browser. |
 | **Git** | per clonare e aggiornare. |
 | **Claude Code** | quello che l'ufficio osserva: terminale, VS Code/JetBrains, app desktop. |
 | **Spazio** | circa 300 MB nella cartella `node_modules` (Electron). |
@@ -63,7 +63,7 @@ Note:
 
 ## Linux
 
-1. Installa Node.js 20+ e Git. Le versioni nei repository delle distribuzioni sono spesso vecchie: conviene [nvm](https://github.com/nvm-sh/nvm) oppure i pacchetti di [NodeSource](https://github.com/nodesource/distributions).
+1. Installa Node.js 22.12+ e Git. Le versioni nei repository delle distribuzioni sono spesso vecchie: conviene [nvm](https://github.com/nvm-sh/nvm) oppure i pacchetti di [NodeSource](https://github.com/nodesource/distributions).
    ```sh
    # con nvm (qualsiasi distribuzione)
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash

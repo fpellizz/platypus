@@ -25,10 +25,10 @@
     "dist:win": "npm run dist:tools && electron-builder --win zip --x64",
     "dist:mac": "npm run dist:tools && electron-builder --mac zip",
     "dist:linux": "npm run dist:tools && electron-builder --linux AppImage",
-    "dist:tools": "npm install --no-save electron-builder@26.0.12 resedit@2.0.3"
+    "dist:tools": "npm install --no-save electron-builder@26.18.0 resedit@3.1.0"
   },
   "devDependencies": {
-    "electron": "38.8.6"
+    "electron": "44.9.3"
   },
   "build": {
     "appId": "com.platypus.desktop",

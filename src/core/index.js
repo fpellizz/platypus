@@ -46,6 +46,10 @@ const hooks = require('./hooks');
 
 const DEFAULT_PORT = Number(process.env.PLATYPUS_PORT) || 47800;
 const RENDERER = path.join(__dirname, '..', '..', 'renderer');
+// pagine dell'ufficio: solo script e risorse del server locale (un'eventuale iniezione di HTML non potrebbe eseguire
+// nulla), stili in linea ammessi (gli attributi style dei pannelli), e mai dentro un iframe di un'altra pagina
+// (nessuno può farti cliccare "SÌ" su un permesso nascondendo l'ufficio sotto la sua pagina)
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
 
 function defaultSettingsPath() { return path.join(dataDir(), 'settings.json'); }
@@ -413,12 +417,16 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     }
   }
 
+  const ownOrigin = o => { const m = /^http:\/\/(?:127\.0\.0\.1|localhost):(\d+)$/.exec(o); return !!m && Number(m[1]) === server.address().port; };
   const server = http.createServer((req, res) => {
-    const url = new URL(req.url, 'http://127.0.0.1');
+    let url;
+    try { url = new URL(req.url, 'http://127.0.0.1'); } catch { res.writeHead(400); return res.end(); } // es. "GET http://[ HTTP/1.1"
     // accetta solo richieste locali dirette (anche contro il DNS rebinding)
     const hostOk = /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || '');
     if (!hostOk) { res.writeHead(403); return res.end(); }
-    if (req.headers.origin && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.origin)) {
+    // e dalle pagine dell'ufficio soltanto: un'altra pagina su localhost (un dev server, un notebook) ha un'altra porta
+    // e non deve poter cambiare le opzioni, scrivere il CLAUDE.md o aprire terminali. Senza Origin: hook (curl) e programmi locali.
+    if (req.headers.origin && !ownOrigin(req.headers.origin)) {
       res.writeHead(403); return res.end();
     }
     if (req.method === 'POST') {
@@ -472,11 +480,16 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     // un percorso con un "%" sbagliato (es. "/%") non deve far cadere il server
     try { rel = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname === '/report' ? '/report.html' : url.pathname); }
     catch { res.writeHead(400); return res.end(); }
+    // un byte nullo farebbe lanciare fs.readFile (e cadere il server): basta un <img src=".../%00"> in una pagina web
+    if (rel.includes('\0')) { res.writeHead(400); return res.end(); }
     const file = path.normalize(path.join(RENDERER, rel));
-    if (!file.startsWith(RENDERER)) { res.writeHead(403); return res.end(); }
+    // dentro renderer/ e basta: senza il separatore passerebbe anche una cartella sorella come renderer-old/
+    if (!file.startsWith(RENDERER + path.sep)) { res.writeHead(403); return res.end(); }
     fs.readFile(file, (err, data) => {
       if (err) { res.writeHead(404); return res.end('404'); }
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+      const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' };
+      if (path.extname(file) === '.html') Object.assign(headers, { 'Content-Security-Policy': CSP, 'X-Frame-Options': 'DENY' });
+      res.writeHead(200, headers);
       res.end(data);
     });
   });
