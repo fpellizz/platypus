@@ -228,6 +228,7 @@ body.app .win { display: flex; }
 #help {
   position: absolute; right: 10px; top: 10px; background: #14111f; border: 3px solid var(--pink);
   padding: 8px 14px; font-size: 18px; box-shadow: 5px 5px 0 #000; z-index: 70;
+  max-height: calc(100% - 20px); overflow-y: auto; /* in una finestra bassa l'aiuto scorre invece di uscire dallo schermo */
 }
 #help h2 { font-family: 'PS2P'; font-size: 10px; color: var(--pink); margin: 6px 0; }
 #help ul { margin: 0 0 6px; padding-left: 0; list-style: none; }
