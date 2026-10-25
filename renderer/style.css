@@ -578,7 +578,8 @@ body.widget #widget { display: block; flex: 1; padding: 6px 8px; overflow: hidde
 body.tiny .balloon .ung { display: none; }
 /* con tre viste l'intestazione non ci sta sempre: i pulsanti delle viste si stringono, "?" e "X" restano visibili */
 #worldmap .wm-head > .wm-views { flex: 0 1 auto; min-width: 0; overflow: hidden; }
-#worldmap .wm-views button { min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* quando lo spazio manca il nome della vista va a capo (due righe) invece di diventare "TERRITORIO E TRA…" */
+#worldmap .wm-views button { min-width: 0; flex: 0 1 auto; white-space: normal; line-height: 1.4; max-width: 220px; overflow: hidden; }
 #worldmap .wm-head > .wm-phase, #worldmap .wm-head > .wm-stats { flex-shrink: 1000; }
 #worldmap.view-ground .wm-head > .wm-phase { display: none; }
 /* mappa della realtà: vista "sorpresa e cause" */
