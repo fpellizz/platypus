@@ -31,7 +31,9 @@ body { font-family: 'VT', monospace; display: flex; flex-direction: column; user
 #titlebar button, #titlebar .win { -webkit-app-region: no-drag; }
 .logo .a { color: var(--pink); text-shadow: 0 0 6px rgba(255,119,168,.6); }
 .logo .b { color: var(--blue); margin-left: 0; text-shadow: 0 0 6px rgba(41,173,255,.6); }
-#stats { flex: 1; text-align: center; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+/* una riga sola di voci intere: quelle che non ci stanno vanno a capo e restano fuori vista (mai tagliate a metà) */
+#stats { flex: 1; min-width: 0; color: var(--dim); display: flex; flex-wrap: wrap; justify-content: center; column-gap: 14px; height: 14px; line-height: 14px; overflow: hidden; }
+#stats .it { white-space: nowrap; }
 #stats b { color: var(--yellow); font-weight: normal; }
 #stats .live { color: var(--green); }
 #stats .off { color: var(--red); }
@@ -268,7 +270,7 @@ body.tiny .balloon .task { display: none; }
 body.tiny .balloon { padding: 2px 4px 3px; }
 body.tiny .podlabel small { display: none; }
 @media (max-width: 1100px) {
-  #hookstate, #btn-help, #btn-crt { display: none; }
+  #hookstate, #btn-crt { display: none; } /* "?" resta: è l'unico modo di scoprire le scorciatoie */
 }
 @media (max-width: 760px) {
   #elevator { flex-basis: 54px; padding: 4px; }

@@ -2866,9 +2866,11 @@ function updateHud() {
     const c = sessionCounts(s);
     ag += c.agents; busy += c.busy; wait += c.wait; done += c.done; cost += s.cost || 0; alerts += alertsOf(s).length;
   }
-  $('#stats').innerHTML = `${tr('SESSIONI')} <b>${p2(ses)}</b> &nbsp; ${tr('AGENTI')} <b>${p2(ag)}</b> &nbsp; ${tr('AL LAVORO')} <b>${p2(busy)}</b>` +
-    (wait ? ` &nbsp; <span class="off">${tr('ATTESA')} ${p2(wait)}</span>` : '') + (alerts ? ` &nbsp; <span class="warn">${tr('AVVISI')} ${p2(alerts)}</span>` : '') +
-    ` &nbsp; ${tr('FATTI')} <b>${p2(done)}</b> &nbsp; ${tr('COSTO')} <b>${money(cost)}</b> &nbsp; <span class="live">● LIVE</span>`;
+  // dalla voce più importante: in una finestra stretta restano visibili attese, avvisi e costo (le altre vanno a capo, fuori vista)
+  const item = (cls, html) => `<span class="it ${cls}">${html}</span>`;
+  $('#stats').innerHTML = (wait ? item('off', `${tr('ATTESA')} ${p2(wait)}`) : '') + (alerts ? item('warn', `${tr('AVVISI')} ${p2(alerts)}`) : '') +
+    item('', `${tr('COSTO')} <b>${money(cost)}</b>`) + item('', `${tr('AL LAVORO')} <b>${p2(busy)}</b>`) + item('', `${tr('AGENTI')} <b>${p2(ag)}</b>`) +
+    item('', `${tr('FATTI')} <b>${p2(done)}</b>`) + item('', `${tr('SESSIONI')} <b>${p2(ses)}</b>`) + item('live', '● LIVE');
   const hs = $('#hookstate');
   const on = snap.hooks && (snap.hooks.installed || snap.hooks.active);
   hs.textContent = on ? 'HOOK ON' : 'HOOK OFF';
