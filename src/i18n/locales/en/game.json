@@ -249,7 +249,6 @@
  "Attesa risposta dal fumetto (s)": "Wait for balloon answer (s)",
  "Per quanto tempo l'ufficio tiene in sospeso una richiesta di permesso prima di lasciarla al terminale.": "How long the office holds a permission request before handing it back to the terminal.",
  "Rispondi ai permessi dai fumetti (SÌ / SEMPRE / NO)": "Answer permissions from the balloons (YES / ALWAYS / NO)",
- "Notifiche di Windows anche per gli avvisi": "Windows notifications for alerts too",
  "Collega fastidioso in giro per i piani": "Annoying coworker roaming the floors",
  "Gatto dell'ufficio": "Office cat",
  "Feste per commit, PR e test verdi": "Parties for commits, PRs and green tests",
@@ -327,5 +326,13 @@
  "Frecce: muovi · P: pausa · Esc: esci": "Arrows: move · P: pause · Esc: exit",
  "Frecce: muovi · Su/X: ruota · Spazio: caduta · P: pausa · Esc: esci": "Arrows: move · Up/X: rotate · Space: drop · P: pause · Esc: exit",
  "Frecce: muovi · Spazio: spara · P: pausa · Esc: esci": "Arrows: move · Space: fire · P: pause · Esc: exit",
- "Frecce: salta · P: pausa · Esc: esci": "Arrows: hop · P: pause · Esc: exit"
+ "Frecce: salta · P: pausa · Esc: esci": "Arrows: hop · P: pause · Esc: exit",
+ "Notifiche del sistema anche per gli avvisi": "System notifications for alerts too",
+ "PERMESSI DAI FUMETTI": "PERMISSIONS FROM THE BALLOONS",
+ "COSTI E REPORT": "COSTS AND REPORT",
+ "LIBRO DELLA BOTTEGA": "WORKSHOP BOOK",
+ "VITA D'UFFICIO": "OFFICE LIFE",
+ "LINGUA E CARTELLE": "LANGUAGE AND FOLDERS",
+ "Modifiche non salvate": "Unsaved changes",
+ "Ci sono modifiche non salvate: premi SALVA, oppure chiudi di nuovo per lasciarle perdere.": "You have unsaved changes: press SAVE, or close again to discard them."
 }

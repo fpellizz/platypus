@@ -3073,7 +3073,7 @@ const SETTINGS_FIELDS = [
 ];
 const SETTINGS_CHECKS = [
   ['approveFromOffice', tr('Rispondi ai permessi dai fumetti (SÌ / SEMPRE / NO)')],
-  ['alertsNotify', tr('Notifiche di Windows anche per gli avvisi')],
+  ['alertsNotify', tr('Notifiche del sistema anche per gli avvisi')],
   ['pestEnabled', tr('Collega fastidioso in giro per i piani')],
   ['catEnabled', tr('Gatto dell\'ufficio')],
   ['hrEnabled', tr('Risorse umane: richiamo a chi butta giù una lavagna')],
@@ -3091,6 +3091,31 @@ const SETTINGS_TEXTS = [
   ['claudeDirs', tr('Altre cartelle di Claude Code'), 600, tr('Altre installazioni di Claude Code da seguire, per esempio dentro WSL o un altro utente (cartelle .claude, separate da ;). Le distribuzioni WSL accese si trovano da sole.')],
   ['coworkDirs', tr('Cartelle Cowork extra'), 600, tr('Se le sessioni Cowork non compaiono, indica qui la cartella (anche più di una, separate da ;).')],
 ];
+// le opzioni divise per argomento, dalle più importanti; una voce che manca qui finisce in fondo (ALTRO)
+const SETTINGS_GROUPS = [
+  [tr('AVVISI'), ['budgetUSD', 'waitMin', 'stuckMin', 'errStreak', 'idleMin', 'groundingAlerts', 'alertsNotify']],
+  [tr('PERMESSI DAI FUMETTI'), ['approveFromOffice', 'approveWaitSec']],
+  [tr('COSTI E REPORT'), ['pricePerMTok', 'reportHour']],
+  [tr('LIBRO DELLA BOTTEGA'), ['bottegaLearn', 'elderEnabled']],
+  [tr('VITA D\'UFFICIO'), ['partyEnabled', 'pestEnabled', 'pestName', 'catEnabled', 'hrEnabled', 'hrName', 'nightAuto', 'outfits', 'weatherCity']],
+  [tr('LINGUA E CARTELLE'), ['lang', 'claudeDirs', 'coworkDirs']],
+];
+function settingRow(k, st) {
+  const f = SETTINGS_FIELDS.find(x => x[0] === k), c = SETTINGS_CHECKS.find(x => x[0] === k), tx = SETTINGS_TEXTS.find(x => x[0] === k);
+  if (f) return `<label title="${esc(f[2])}"><span>${esc(f[1])}</span><input type="number" min="0" step="any" name="${k}" value="${esc(st[k])}"></label>`;
+  if (c) return `<label class="chk"><input type="checkbox" name="${k}" ${st[k] !== false ? 'checked' : ''}><span>${esc(c[1])}</span></label>`;
+  if (tx) return `<label title="${esc(tx[3])}"><span>${esc(tx[1])}</span><input type="text" name="${k}" maxlength="${tx[2]}" value="${esc(st[k] || '')}" placeholder="${k === 'coworkDirs' ? esc(tr('es. D:\\Claude')) : ''}"></label>`;
+  if (k === 'lang') return `<label title="${esc(tr('Lingua dell\'ufficio'))}"><span>${esc(tr('Lingua'))}</span><select name="lang">` +
+    [['auto', tr('Automatica (come il sistema)')], ...Object.entries((window.AO_I18N && AO_I18N.langs) || { it: 'Italiano' })]
+      .map(([v, l]) => `<option value="${esc(v)}" ${(st.lang || 'auto') === v ? 'selected' : ''}>${esc(l)}</option>`).join('') + '</select></label>';
+  return '';
+}
+function settingsGroupsHtml(st) {
+  const placed = new Set(SETTINGS_GROUPS.flatMap(g => g[1]));
+  const rest = [...SETTINGS_FIELDS, ...SETTINGS_CHECKS, ...SETTINGS_TEXTS].map(x => x[0]).filter(k => !placed.has(k));
+  return [...SETTINGS_GROUPS, ...(rest.length ? [[tr('ALTRO'), rest]] : [])]
+    .map(([title, keys]) => `<fieldset><legend>${esc(title)}</legend>${keys.map(k => settingRow(k, st)).join('')}</fieldset>`).join('');
+}
 const WEATHER_NAMES = { clear: tr('sereno'), partly: tr('poco nuvoloso'), cloudy: tr('nuvoloso'), rain: tr('pioggia'), snow: tr('neve'), storm: tr('temporale'), fog: tr('nebbia') };
 function settingsStatus() {
   const w = snap && snap.weather, cw = snap && snap.cowork;
@@ -3108,18 +3133,19 @@ function settingsStatus() {
 }
 function toggleSettings() {
   const box = $('#settings');
-  if (!box.hidden) { box.hidden = true; return; }
+  if (!box.hidden) { if (box._tryClose) box._tryClose(); else box.hidden = true; return; }
   const st = (snap && snap.settings) || {};
-  box.innerHTML = '<span class="x">X</span><h3>' + tr('OPZIONI') + '</h3>' + SETTINGS_FIELDS.map(([k, l, h]) =>
-    `<label title="${esc(h)}"><span>${esc(l)}</span><input type="number" min="0" step="any" name="${k}" value="${esc(st[k])}"></label>`).join('') +
-    SETTINGS_TEXTS.map(([k, l, max, h]) => `<label title="${esc(h)}"><span>${esc(l)}</span><input type="text" name="${k}" maxlength="${max}" value="${esc(st[k] || '')}" placeholder="${k === 'coworkDirs' ? esc(tr('es. D:\\Claude')) : ''}"></label>`).join('') +
-    `<label title="${esc(tr('Lingua dell\'ufficio'))}"><span>${esc(tr('Lingua'))}</span><select name="lang">` +
-      [['auto', tr('Automatica (come il sistema)')], ...Object.entries((window.AO_I18N && AO_I18N.langs) || { it: 'Italiano' })]
-        .map(([k, l]) => `<option value="${esc(k)}" ${(st.lang || 'auto') === k ? 'selected' : ''}>${esc(l)}</option>`).join('') + '</select></label>' +
-    SETTINGS_CHECKS.map(([k, l]) => `<label class="chk"><input type="checkbox" name="${k}" ${st[k] !== false ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('') +
-    `<div class="btns"><button data-do="save">${tr('SALVA')}</button></div>` + settingsStatus() +
-    `<p class="dim">${tr('Le opzioni restano salvate anche alla prossima apertura.')}</p>`;
-  box.querySelector('.x').onclick = () => { box.hidden = true; };
+  box.innerHTML = '<span class="x">X</span><h3>' + tr('OPZIONI') + '</h3>' + settingsGroupsHtml(st) + settingsStatus() +
+    `<p class="dim">${tr('Le opzioni restano salvate anche alla prossima apertura.')}</p>` +
+    `<div class="btns save-bar"><button data-do="save">${tr('SALVA')}</button><span class="dirty" hidden>${tr('Modifiche non salvate')}</span></div>`;
+  // chiudere con X dopo una modifica: la prima volta avvisa, la seconda chiude senza salvare
+  let dirty = false, warned = false;
+  box.addEventListener('input', () => { dirty = true; warned = false; box.querySelector('.dirty').hidden = false; });
+  box._tryClose = () => {
+    if (dirty && !warned) { warned = true; toast(tr('Ci sono modifiche non salvate: premi SALVA, oppure chiudi di nuovo per lasciarle perdere.'), false); return; }
+    box.hidden = true;
+  };
+  box.querySelector('.x').onclick = box._tryClose;
   box.querySelector('[data-do=rescan]').onclick = async () => {
     const r = await api('/api/cowork-scan', {});
     if (r) { snap.cowork = r; toast(tr('Cowork: {found} cartelle trovate, {watched} seguite', { found: r.found, watched: r.watched })); box.hidden = true; toggleSettings(); }
@@ -3183,7 +3209,7 @@ window.addEventListener('keydown', e => {
   else if (k === 'escape') {
     // dall'area relax si torna in atrio, se non c'è niente di aperto da chiudere
     if (viewSid === 'relax' && $('#help').hidden && $('#settings').hidden && $('#search').hidden && !(window.worldMapOpen && worldMapOpen())) goTo(null);
-    if (window.closeWorldMap) closeWorldMap(); if (window.closeBottega) closeBottega(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; $('#settings').hidden = true; roomListKey = null;
+    if (window.closeWorldMap) closeWorldMap(); if (window.closeBottega) closeBottega(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; { const sb = $('#settings'); if (!sb.hidden) { if (sb._tryClose) sb._tryClose(); else sb.hidden = true; } } roomListKey = null;
   }
 });
 window.addEventListener('resize', () => { if (snap) reconcile(); });
