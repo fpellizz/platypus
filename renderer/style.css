@@ -31,7 +31,9 @@ body { font-family: 'VT', monospace; display: flex; flex-direction: column; user
 #titlebar button, #titlebar .win { -webkit-app-region: no-drag; }
 .logo .a { color: var(--pink); text-shadow: 0 0 6px rgba(255,119,168,.6); }
 .logo .b { color: var(--blue); margin-left: 0; text-shadow: 0 0 6px rgba(41,173,255,.6); }
-#stats { flex: 1; text-align: center; color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+/* una riga sola di voci intere: quelle che non ci stanno vanno a capo e restano fuori vista (mai tagliate a metà) */
+#stats { flex: 1; min-width: 0; color: var(--dim); display: flex; flex-wrap: wrap; justify-content: center; column-gap: 14px; height: 14px; line-height: 14px; overflow: hidden; }
+#stats .it { white-space: nowrap; }
 #stats b { color: var(--yellow); font-weight: normal; }
 #stats .live { color: var(--green); }
 #stats .off { color: var(--red); }
@@ -53,7 +55,8 @@ body.app .win { display: flex; }
 /* ---------- palcoscenico ---------- */
 #middle { flex: 1; display: flex; min-height: 0; }
 #viewport { position: relative; flex: 1; min-width: 0; overflow: hidden; background: #000; }
-#stage { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; scrollbar-color: #4a4266 #000; }
+/* z-index: 0 fa del piano un livello a sé: i fumetti (anche con z-index 999) restano sotto schede e pannelli */
+#stage { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; scrollbar-color: #4a4266 #000; z-index: 0; }
 #world-wrap { position: relative; }
 #world { position: absolute; left: 0; top: 0; image-rendering: pixelated; image-rendering: crisp-edges; }
 #overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
@@ -225,6 +228,7 @@ body.app .win { display: flex; }
 #help {
   position: absolute; right: 10px; top: 10px; background: #14111f; border: 3px solid var(--pink);
   padding: 8px 14px; font-size: 18px; box-shadow: 5px 5px 0 #000; z-index: 70;
+  max-height: calc(100% - 20px); overflow-y: auto; /* in una finestra bassa l'aiuto scorre invece di uscire dallo schermo */
 }
 #help h2 { font-family: 'PS2P'; font-size: 10px; color: var(--pink); margin: 6px 0; }
 #help ul { margin: 0 0 6px; padding-left: 0; list-style: none; }
@@ -267,7 +271,7 @@ body.tiny .balloon .task { display: none; }
 body.tiny .balloon { padding: 2px 4px 3px; }
 body.tiny .podlabel small { display: none; }
 @media (max-width: 1100px) {
-  #hookstate, #btn-help, #btn-crt { display: none; }
+  #hookstate, #btn-crt { display: none; } /* "?" resta: è l'unico modo di scoprire le scorciatoie */
 }
 @media (max-width: 760px) {
   #elevator { flex-basis: 54px; padding: 4px; }
@@ -369,6 +373,12 @@ body.tiny .podlabel small { display: none; }
   background: #14111f; border: 3px solid var(--green); box-shadow: 5px 5px 0 #000; padding: 10px 12px; font-size: 17px;
 }
 #settings h3 { font-family: 'PS2P'; font-size: 10px; color: var(--green); margin: 0 0 8px; }
+/* gruppi di opzioni per argomento */
+#settings fieldset { border: 0; border-top: 2px solid #2a2440; margin: 10px 0 0; padding: 4px 0 0; }
+#settings legend { font-family: 'PS2P'; font-size: 8px; color: var(--yellow); padding: 0 6px 0 0; }
+/* SALVA sempre a portata di mano, anche in fondo a una lista lunga */
+#settings .save-bar { position: sticky; bottom: -10px; margin: 10px -12px -10px; padding: 8px 12px; background: #14111f; border-top: 2px solid #2a2440; display: flex; align-items: center; gap: 10px; }
+#settings .save-bar .dirty { color: var(--orange); font-size: 16px; }
 #settings .x { position: absolute; right: 10px; top: 8px; font-family: 'PS2P'; font-size: 10px; cursor: pointer; color: var(--dim); }
 #settings label { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 5px 0; }
 #settings input[type=number] { width: 80px; font-family: 'PS2P'; font-size: 9px; background: #000; color: var(--yellow); border: 2px solid #2a2440; padding: 4px; }
@@ -381,7 +391,7 @@ body.tiny .podlabel small { display: none; }
 
 /* ---------- lavagne ---------- */
 .wbtext { font-family: 'VT'; font-size: calc(var(--bubble-font) * 0.78); line-height: 0.95; color: #1D2B53; padding: 2px 4px; overflow: hidden; white-space: normal; }
-.wbtext b { display: block; font-family: 'PS2P'; font-size: calc(var(--bubble-font) * 0.36); font-weight: normal; color: #7E2553; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wbtext b { display: block; font-family: 'PS2P'; font-size: calc(var(--bubble-font) * 0.36); line-height: 1.35; font-weight: normal; color: #7E2553; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* interlinea propria: con quella della lavagna (0.95) il titolo era tagliato in alto */
 .wbtext .ti { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wbtext .ti i { display: inline-block; width: .6em; height: .6em; border: 1px solid #1D2B53; margin-right: .3em; vertical-align: 0; }
 .wbtext .ti.done { color: #008751; text-decoration: line-through; }
@@ -390,8 +400,8 @@ body.tiny .podlabel small { display: none; }
 .wbtext .ti.doing i { background: #FFA300; border-color: #c25e00; }
 .wbtext .more { display: block; color: #83769C; font-size: .85em; }
 .wbtext .sig { position: absolute; right: 4px; bottom: 2px; color: #83769C; font-size: .8em; }
-.wbtext.plan .steps { display: flex; gap: 4px; margin-top: calc(var(--bubble-font) * 0.55); }
-.wbtext.plan em { flex: 1; font-style: normal; font-size: .72em; line-height: 1; color: #1D2B53; overflow: hidden; max-height: 2.1em; text-align: center; padding: 1px; }
+.wbtext.plan .steps { display: flex; gap: 2px; margin-top: calc(var(--bubble-font) * 0.55); }
+.wbtext.plan em { flex: 1; min-width: 0; font-style: normal; font-size: .72em; line-height: 1; color: #1D2B53; text-align: center; padding: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; } /* due righe al massimo, con i puntini se il passo è più lungo */
 .balloon.st-rage { background: var(--red); color: #fff; animation: shake .15s steps(2) infinite; }
 .balloon.st-rage .nm, .balloon.st-rage .act { color: #fff; }
 @keyframes shake { 50% { margin-left: 3px; } }
@@ -577,7 +587,8 @@ body.widget #widget { display: block; flex: 1; padding: 6px 8px; overflow: hidde
 body.tiny .balloon .ung { display: none; }
 /* con tre viste l'intestazione non ci sta sempre: i pulsanti delle viste si stringono, "?" e "X" restano visibili */
 #worldmap .wm-head > .wm-views { flex: 0 1 auto; min-width: 0; overflow: hidden; }
-#worldmap .wm-views button { min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* quando lo spazio manca il nome della vista va a capo (due righe) invece di diventare "TERRITORIO E TRA…" */
+#worldmap .wm-views button { min-width: 0; flex: 0 1 auto; white-space: normal; line-height: 1.4; max-width: 220px; overflow: hidden; }
 #worldmap .wm-head > .wm-phase, #worldmap .wm-head > .wm-stats { flex-shrink: 1000; }
 #worldmap.view-ground .wm-head > .wm-phase { display: none; }
 /* mappa della realtà: vista "sorpresa e cause" */

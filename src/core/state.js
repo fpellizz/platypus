@@ -16,6 +16,32 @@ const BUSY = new Set(['working', 'thinking', 'writing']);
 // strumenti che aspettano te, non un processo: non sono "blocchi"
 const USER_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
 
+// il file del piano di Claude Code: <cartella di configurazione>/plans/<nome>.md (es. ~/.claude/plans/…)
+function isPlanFile(p) { return typeof p === 'string' && /[\\/]\.claude[^\\/]*[\\/]plans[\\/][^\\/]+\.md$/i.test(p); }
+
+// titolo e passi di un piano in markdown: prima le voci numerate (anche "### 1. …"), poi i titoli ##, poi gli elenchi
+function parsePlan(text) {
+  const lines = String(text || '').replace(/```[\s\S]*?(```|$)/g, '').split(/\r?\n/);
+  const clean = l => l.replace(/^#+\s*/, '').replace(/^(\d+[.)]|[-*+])\s+/, '').replace(/\*\*|__|`/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').trim();
+  const title = clean(lines.find(l => /^#\s/.test(l)) || lines.find(l => l.trim()) || '');
+  const pick = re => lines.filter(l => re.test(l)).map(clean).filter(Boolean);
+  const numbered = pick(/^(#{2,4}\s+)?\d+[.)]\s+\S/);
+  const headings = pick(/^#{2,3}\s+\S/);
+  const bullets = pick(/^[-*+]\s+\S/);
+  const steps = numbered.length >= 2 ? numbered : headings.length >= 2 ? headings : bullets.length ? bullets : numbered.concat(headings);
+  return { title, steps: steps.slice(0, 6) };
+}
+
+// il piano approvato nel risultato di ExitPlanMode, se c'è
+function approvedPlan(block, line) {
+  const r = line && line.toolUseResult;
+  if (r && typeof r.plan === 'string' && r.plan.trim()) return r.plan;
+  const c = block && block.content;
+  const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map(x => (x && x.text) || '').join('\n') : '';
+  const m = /##\s*Approved Plan:?[ \t]*\r?\n([\s\S]+)$/i.exec(text);
+  return m ? m[1] : null;
+}
+
 const CFG = {
   sessionIdleTimeoutMs: 20 * 60 * 1000, // sessione senza registro: sparisce dopo 20 min di silenzio
   subQuietAfterReportMs: 25 * 1000,     // sottoagente che ha scritto il resoconto e tace: ha finito
@@ -211,6 +237,7 @@ class OfficeState extends EventEmitter {
         tasks: new Map(),        // id -> {content, status} per TaskCreate/TaskUpdate
         taskSeq: 0,
         plan: null,              // {title, steps[], at}
+        planDraft: null,         // {path, text}: il file del piano mentre Claude lo scrive
         releases: [],            // commit, push, PR, tag, test verdi
         party: null,             // ultima cosa da festeggiare
         testsRed: false,
@@ -363,12 +390,29 @@ class OfficeState extends EventEmitter {
         if (input.subject) t.text = clip(input.subject, 60);
         s.todos = this.boardTodos(s); s.todosAt = ts;
       }
-    } else if (tool === 'ExitPlanMode' && input.plan) {
-      const lines = String(input.plan).split('\n').map(l => l.trim()).filter(Boolean);
-      const title = (lines.find(l => /^#/.test(l)) || lines[0] || tr('Piano di lavoro')).replace(/^#+\s*/, '');
-      const steps = lines.filter(l => /^(#{2,3}\s|\d+[.)]\s|[-*]\s)/.test(l)).map(l => l.replace(/^(#{2,3}\s|\d+[.)]\s|[-*]\s)/, '')).slice(0, 6);
-      s.plan = { title: clip(title, 50), steps: steps.map(x => clip(x.replace(/\*\*/g, ''), 28)), at: ts };
+    } else if ((tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit') && isPlanFile(input.file_path)) {
+      // Claude Code scrive il piano in <config>/plans/*.md e poi chiama ExitPlanMode senza contenuto: lo seguiamo qui
+      const p = String(input.file_path);
+      if (tool === 'Write') s.planDraft = { path: p, text: String(input.content || '') };
+      else if (s.planDraft && s.planDraft.path === p && s.planDraft.text != null) {
+        const edits = tool === 'MultiEdit' ? (Array.isArray(input.edits) ? input.edits : []) : [input];
+        for (const e of edits) {
+          if (!e || typeof e.old_string !== 'string' || !e.old_string || !s.planDraft.text.includes(e.old_string)) continue;
+          const nw = String(e.new_string ?? '');
+          s.planDraft.text = e.replace_all ? s.planDraft.text.split(e.old_string).join(nw) : s.planDraft.text.replace(e.old_string, () => nw);
+        }
+      } else s.planDraft = { path: p, text: null }; // scritto prima della parte di transcript che abbiamo letto
+    } else if (tool === 'ExitPlanMode') {
+      // le versioni vecchie passano il piano nell'input; quelle nuove lo lasciano nel file
+      const text = typeof input.plan === 'string' && input.plan.trim() ? input.plan : s.planDraft && s.planDraft.text;
+      if (text) this.setPlan(s, text, ts);
     }
+  }
+
+  setPlan(s, text, ts) {
+    const pl = parsePlan(text);
+    s.plan = { title: clip(pl.title || tr('Piano di lavoro'), 50), steps: pl.steps.map(x => clip(x, 28)), at: ts || this.now() };
+    this.touch();
   }
 
   // commit, push, PR, tag e test verdi: finiscono nella bacheca dei rilasci e fanno partire la festa
@@ -596,6 +640,8 @@ class OfficeState extends EventEmitter {
             this.worldEnd(s, a, b.tool_use_id, b.is_error, b, line, ts);
             if (pend) {
               if (pend.name === 'TaskCreate' && !agentId) this.resolveTask(s, b.tool_use_id, b.content);
+              // il piano approvato nel risultato (con le modifiche dell'utente), se Claude Code ce lo mette
+              if (pend.name === 'ExitPlanMode' && !agentId && !b.is_error) { const ap = approvedPlan(b, line); if (ap) this.setPlan(s, ap, ts); }
               a.pending = Math.max(0, a.pending - 1);
               if (a.pending > 0) a.pendingSince = ts;
               // errori di fila sullo stesso strumento
@@ -1064,4 +1110,4 @@ function pub(a, rate) {
   };
 }
 
-module.exports = { OfficeState, CFG, DEFAULT_SETTINGS, kindOf, displayName };
+module.exports = { OfficeState, CFG, DEFAULT_SETTINGS, kindOf, displayName, parsePlan, isPlanFile };
