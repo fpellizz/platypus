@@ -26,6 +26,11 @@ function dataDir() {
         }
       }
     } catch { /* si riparte da zero */ }
+    // solo per il proprietario: dentro ci sono progetti, comandi ed estratti degli errori delle sessioni
+    // (su Linux e macOS i permessi predefiniti la lascerebbero leggibile agli altri utenti del computer)
+    if (process.platform !== 'win32') {
+      try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); fs.chmodSync(dir, 0o700); } catch {}
+    }
   }
   return dir;
 }

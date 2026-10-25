@@ -186,8 +186,24 @@ function urlTests(ok) {
   ok(bad.every(u => !isExternalUrl(u)), 'file:, smb:, protocolli di altre app, javascript: e credenziali nell\'indirizzo: mai a openExternal');
 }
 
+// ~/.platypus contiene progetti, comandi ed estratti degli errori: su Linux e macOS solo il proprietario la legge
+function dataDirTests(ok) {
+  if (process.platform === 'win32') { console.log('  --   permessi di ~/.platypus: solo Linux e macOS, controllo saltato'); return; }
+  const { execFileSync } = require('child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-'));
+  try {
+    // in un processo a parte: la home è quella temporanea, la cartella esiste già con i permessi di prima
+    fs.mkdirSync(path.join(tmp, '.platypus'), { mode: 0o755 });
+    fs.chmodSync(path.join(tmp, '.platypus'), 0o755);
+    execFileSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(ROOT, 'src', 'paths'))}).dataDir()`], { env: { ...process.env, HOME: tmp } });
+    const mode = fs.statSync(path.join(tmp, '.platypus')).mode & 0o777;
+    ok(mode === 0o700, `~/.platypus solo per il proprietario (permessi ${mode.toString(8)})`);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
+  dataDirTests(ok);
   urlTests(ok);
   boundsTests(ok);
   forgetTests(ok);
