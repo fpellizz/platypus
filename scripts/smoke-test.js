@@ -196,6 +196,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const own = await fromOrigin(`http://127.0.0.1:${port}`, '/api/settings', '{}');
   const ownLocal = await fromOrigin(`http://localhost:${port}`, '/api/settings', '{}');
   ok(own === 200 && ownLocal === 200, `POST dalla pagina dell'ufficio (127.0.0.1 e localhost, stessa porta) → ${own}, ${ownLocal}`);
+  // indirizzo in forma assoluta non valido, scritto a mano sul socket (un browser non lo manda, un programma sì)
+  const absForm = await new Promise(resolve => {
+    const s = require('net').connect(port, '127.0.0.1', () => s.write(`GET http://[ HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: close\r\n\r\n`));
+    let d = ''; s.on('data', c => { d += c; }); s.on('end', () => resolve(d.split('\r\n')[0])); s.on('error', e => resolve(e.code));
+  });
+  ok(/ 400 /.test(absForm) && (await get(port, '/api/settings')).status === 200, `GET http://[ → ${absForm}, il server risponde ancora`);
   const malformed = await get(port, '/%');
   const stillUp = await get(port, '/api/settings');
   ok(malformed.status === 400 && stillUp.status === 200, `URL malformato (GET /%) → ${malformed.status}, il server risponde ancora → ${stillUp.status}`);

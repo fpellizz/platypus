@@ -415,7 +415,8 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
 
   const ownOrigin = o => { const m = /^http:\/\/(?:127\.0\.0\.1|localhost):(\d+)$/.exec(o); return !!m && Number(m[1]) === server.address().port; };
   const server = http.createServer((req, res) => {
-    const url = new URL(req.url, 'http://127.0.0.1');
+    let url;
+    try { url = new URL(req.url, 'http://127.0.0.1'); } catch { res.writeHead(400); return res.end(); } // es. "GET http://[ HTTP/1.1"
     // accetta solo richieste locali dirette (anche contro il DNS rebinding)
     const hostOk = /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || '');
     if (!hostOk) { res.writeHead(403); return res.end(); }
