@@ -46,6 +46,10 @@ const hooks = require('./hooks');
 
 const DEFAULT_PORT = Number(process.env.PLATYPUS_PORT) || 47800;
 const RENDERER = path.join(__dirname, '..', '..', 'renderer');
+// pagine dell'ufficio: solo script e risorse del server locale (un'eventuale iniezione di HTML non potrebbe eseguire
+// nulla), stili in linea ammessi (gli attributi style dei pannelli), e mai dentro un iframe di un'altra pagina
+// (nessuno può farti cliccare "SÌ" su un permesso nascondendo l'ufficio sotto la sua pagina)
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
 
 function defaultSettingsPath() { return path.join(dataDir(), 'settings.json'); }
@@ -483,7 +487,9 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     if (!file.startsWith(RENDERER + path.sep)) { res.writeHead(403); return res.end(); }
     fs.readFile(file, (err, data) => {
       if (err) { res.writeHead(404); return res.end('404'); }
-      res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+      const headers = { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' };
+      if (path.extname(file) === '.html') Object.assign(headers, { 'Content-Security-Policy': CSP, 'X-Frame-Options': 'DENY' });
+      res.writeHead(200, headers);
       res.end(data);
     });
   });

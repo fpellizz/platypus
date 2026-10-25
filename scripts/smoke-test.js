@@ -202,6 +202,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     let d = ''; s.on('data', c => { d += c; }); s.on('end', () => resolve(d.split('\r\n')[0])); s.on('error', e => resolve(e.code));
   });
   ok(/ 400 /.test(absForm) && (await get(port, '/api/settings')).status === 200, `GET http://[ → ${absForm}, il server risponde ancora`);
+  // pagine con la CSP (niente script esterni o in linea) e mai dentro un iframe di un'altra pagina
+  const head = await new Promise(resolve => { http.get({ host: '127.0.0.1', port, path: '/' }, res => { res.resume(); resolve(res.headers); }).on('error', () => resolve({})); });
+  const csp = head['content-security-policy'] || '';
+  ok(/script-src 'self'(;|$)/.test(csp) && /frame-ancestors 'none'/.test(csp) && head['x-frame-options'] === 'DENY' && head['x-content-type-options'] === 'nosniff', 'pagina dell\'ufficio: CSP con script solo dal server, niente iframe, nosniff');
+  const inline = fs.readdirSync(path.join(ROOT, 'renderer')).filter(f => f.endsWith('.html')).filter(f => /<script(?![^>]*\ssrc=)[^>]*>/i.test(fs.readFileSync(path.join(ROOT, 'renderer', f), 'utf8')) || / on[a-z]+=["']/i.test(fs.readFileSync(path.join(ROOT, 'renderer', f), 'utf8')));
+  ok(!inline.length, 'nessuno script in linea nelle pagine (la CSP li bloccherebbe)' + (inline.length ? ': ' + inline.join(', ') : ''));
   // una cartella accanto a renderer/ con lo stesso inizio del nome non si serve
   const sibling = path.join(ROOT, 'renderer-smoke-' + process.pid);
   fs.mkdirSync(sibling, { recursive: true });
