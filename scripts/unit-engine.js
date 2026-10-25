@@ -201,8 +201,16 @@ function dataDirTests(ok) {
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
+// lanciatore: con quali versioni di Node.js si apre la finestra (Electron 44 vuole la 22.12)
+function nodeVersionTests(ok) {
+  const { windowNodeOk } = require(path.join(ROOT, 'scripts', 'requirements'));
+  ok(['22.12.0', 'v22.23.4', '24.13.0', '25.0.0'].every(windowNodeOk), 'Node.js 22.12, 22.23, 24 e 25: finestra desktop');
+  ok(!['20.20.2', '22.11.0', '18.20.0', 'v20.0.0'].some(windowNodeOk), 'Node.js 20, 22.11 e 18: solo modalità browser');
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
+  nodeVersionTests(ok);
   dataDirTests(ok);
   urlTests(ok);
   boundsTests(ok);

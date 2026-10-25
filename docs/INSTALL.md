@@ -8,7 +8,7 @@ Platypus runs straight from source: clone the repository and launch it. There ar
 
 | | |
 |---|---|
-| **Node.js** | 20 or newer (LTS recommended). 18 works but is no longer supported. |
+| **Node.js** | 22.12 or newer (LTS recommended). With older versions (Node.js 20 no longer gets security updates) the launcher opens browser mode only. |
 | **Git** | to clone and update. |
 | **Claude Code** | what the office watches: terminal, VS Code/JetBrains, desktop app. |
 | **Disk** | about 300 MB in `node_modules` (Electron). |
