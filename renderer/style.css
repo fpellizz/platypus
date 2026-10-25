@@ -390,7 +390,7 @@ body.tiny .podlabel small { display: none; }
 
 /* ---------- lavagne ---------- */
 .wbtext { font-family: 'VT'; font-size: calc(var(--bubble-font) * 0.78); line-height: 0.95; color: #1D2B53; padding: 2px 4px; overflow: hidden; white-space: normal; }
-.wbtext b { display: block; font-family: 'PS2P'; font-size: calc(var(--bubble-font) * 0.36); font-weight: normal; color: #7E2553; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wbtext b { display: block; font-family: 'PS2P'; font-size: calc(var(--bubble-font) * 0.36); line-height: 1.35; font-weight: normal; color: #7E2553; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* interlinea propria: con quella della lavagna (0.95) il titolo era tagliato in alto */
 .wbtext .ti { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wbtext .ti i { display: inline-block; width: .6em; height: .6em; border: 1px solid #1D2B53; margin-right: .3em; vertical-align: 0; }
 .wbtext .ti.done { color: #008751; text-decoration: line-through; }
@@ -399,8 +399,8 @@ body.tiny .podlabel small { display: none; }
 .wbtext .ti.doing i { background: #FFA300; border-color: #c25e00; }
 .wbtext .more { display: block; color: #83769C; font-size: .85em; }
 .wbtext .sig { position: absolute; right: 4px; bottom: 2px; color: #83769C; font-size: .8em; }
-.wbtext.plan .steps { display: flex; gap: 4px; margin-top: calc(var(--bubble-font) * 0.55); }
-.wbtext.plan em { flex: 1; font-style: normal; font-size: .72em; line-height: 1; color: #1D2B53; overflow: hidden; max-height: 2.1em; text-align: center; padding: 1px; }
+.wbtext.plan .steps { display: flex; gap: 2px; margin-top: calc(var(--bubble-font) * 0.55); }
+.wbtext.plan em { flex: 1; min-width: 0; font-style: normal; font-size: .72em; line-height: 1; color: #1D2B53; text-align: center; padding: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; } /* due righe al massimo, con i puntini se il passo è più lungo */
 .balloon.st-rage { background: var(--red); color: #fff; animation: shake .15s steps(2) infinite; }
 .balloon.st-rage .nm, .balloon.st-rage .act { color: #fff; }
 @keyframes shake { 50% { margin-left: 3px; } }
