@@ -184,6 +184,18 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     req.on('error', () => resolve(0)); req.end();
   });
   ok(bad === 403, 'richieste da altri host rifiutate → ' + bad);
+  // una pagina su un'altra porta di localhost (dev server, notebook) non deve poter usare le API dell'ufficio
+  const fromOrigin = (origin, p, body) => new Promise(resolve => {
+    const req = http.request({ host: '127.0.0.1', port, path: p, method: 'POST', headers: { Origin: origin, 'Content-Type': 'text/plain' } }, res => { res.resume(); resolve(res.statusCode); });
+    req.on('error', () => resolve(0)); req.end(body);
+  });
+  const dirsBefore = core.state.settings.claudeDirs;
+  const foreign = await fromOrigin('http://localhost:3000', '/api/settings', JSON.stringify({ claudeDirs: '\\\\attacker.example\\share' }));
+  const foreign2 = await fromOrigin('http://127.0.0.1:5173', '/api/demo', '{"on":false}');
+  ok(foreign === 403 && foreign2 === 403 && core.state.settings.claudeDirs === dirsBefore, `POST da un'altra porta di localhost rifiutato → ${foreign}, ${foreign2}`);
+  const own = await fromOrigin(`http://127.0.0.1:${port}`, '/api/settings', '{}');
+  const ownLocal = await fromOrigin(`http://localhost:${port}`, '/api/settings', '{}');
+  ok(own === 200 && ownLocal === 200, `POST dalla pagina dell'ufficio (127.0.0.1 e localhost, stessa porta) → ${own}, ${ownLocal}`);
   const malformed = await get(port, '/%');
   const stillUp = await get(port, '/api/settings');
   ok(malformed.status === 400 && stillUp.status === 200, `URL malformato (GET /%) → ${malformed.status}, il server risponde ancora → ${stillUp.status}`);

@@ -413,12 +413,15 @@ function startCore({ port = DEFAULT_PORT, base, includeCowork = true, settingsPa
     }
   }
 
+  const ownOrigin = o => { const m = /^http:\/\/(?:127\.0\.0\.1|localhost):(\d+)$/.exec(o); return !!m && Number(m[1]) === server.address().port; };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     // accetta solo richieste locali dirette (anche contro il DNS rebinding)
     const hostOk = /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host || '');
     if (!hostOk) { res.writeHead(403); return res.end(); }
-    if (req.headers.origin && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.origin)) {
+    // e dalle pagine dell'ufficio soltanto: un'altra pagina su localhost (un dev server, un notebook) ha un'altra porta
+    // e non deve poter cambiare le opzioni, scrivere il CLAUDE.md o aprire terminali. Senza Origin: hook (curl) e programmi locali.
+    if (req.headers.origin && !ownOrigin(req.headers.origin)) {
       res.writeHead(403); return res.end();
     }
     if (req.method === 'POST') {
