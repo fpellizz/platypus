@@ -45,5 +45,8 @@
   "Policy riviste: 2 punti da sistemare": "Policies reviewed: 2 points to fix",
   "Controlla anche il logout": "Check logout too",
   "Le sessioni vanno in Redis": "Sessions go into Redis",
-  "Aspetta i test prima della PR": "Wait for the tests before the PR"
+  "Aspetta i test prima della PR": "Wait for the tests before the PR",
+  "{n} workflow: i suoi agenti sono contati qui; nel replay si vedono con SQUADRE (W)": "{n} workflow: its agents are counted here; in the replay they show under TEAMS (W)",
+  "{n} workflow: i loro agenti sono contati qui; nel replay si vedono con SQUADRE (W)": "{n} workflows: their agents are counted here; in the replay they show under TEAMS (W)",
+  "{n} WF": "{n} WF"
 }

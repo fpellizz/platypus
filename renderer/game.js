@@ -331,7 +331,7 @@ async function refreshArchive(force) {
 function dur(ms) { const m = Math.round(ms / 60000); return m < 60 ? tr('{m} min', { m }) : tr('{h} h {mm}', { h: Math.floor(m / 60), mm: p2(m % 60) }); }
 function renderArchive() {
   const list = Array.isArray(archiveData) ? archiveData : [];
-  const sig = JSON.stringify(list.map(x => [x.key, x.end, x.live, x.title]));
+  const sig = JSON.stringify(list.map(x => [x.key, x.end, x.live, x.title, x.workflows]));
   if (sig === archiveSig) return;
   archiveSig = sig;
   const el = $('#archive');
@@ -343,7 +343,7 @@ function renderArchive() {
       return `<tr data-key="${esc(x.key)}"><td class="when">${esc(new Date(x.start).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</td>` +
         `<td class="num">${dur(x.end - x.start)}</td>` +
         `<td class="proj">${esc(name)}${x.live ? ' <b class="live">' + tr('IN CORSO') + '</b>' : ''}<small>${esc(kind === 'cowork' ? x.project : x.title)}</small></td>` +
-        `<td><span class="kind" style="color:${KIND_COLOR[kind]}">${KIND_LABEL[kind]}</span></td><td class="num">${p2(x.subagents)}</td>` +
+        `<td><span class="kind" style="color:${KIND_COLOR[kind]}">${KIND_LABEL[kind]}</span></td><td class="num">${p2(x.subagents)}${x.workflows ? ` <b class="wfn" title="${esc(trn('{n} workflow: i suoi agenti sono contati qui; nel replay si vedono con SQUADRE (W)', '{n} workflow: i loro agenti sono contati qui; nel replay si vedono con SQUADRE (W)', x.workflows))}">${esc(tr('{n} WF', { n: x.workflows }))}</b>` : ''}</td>` +
         `<td class="acts"><button data-do="replay">${tr('REPLAY')}</button>` +
         (kind !== 'cowork' && !x.live ? `<button data-do="resume" title="${esc(tr('Apre un terminale con claude --resume'))}">${tr('RIPRENDI')}</button>` : '') +
         `<button data-do="folder">${tr('CARTELLA')}</button></td></tr>`;
@@ -444,6 +444,13 @@ function layoutLobby() {
   receptionist.y = H - 26;
 }
 
+// nel tabellone: quanti workflow sono in corso sul piano (il dettaglio è nel pannello SQUADRE)
+function wfChip(s) {
+  const live = (s.workflows || []).filter(r => r.status === 'running');
+  if (!live.length) return '';
+  const phase = r => { const p = r.phases.find(x => x.running) || r.phases.find(x => x.total && x.done + x.failed < x.total); return p ? p.title : ''; };
+  return ` <b class="wfn" title="${esc(live.map(r => r.name + (phase(r) ? ' · ' + phase(r) : '')).join(' / '))}">${esc(tr('{n} WF', { n: live.length }))}</b>`;
+}
 let boardSig = '';
 function updateBoard() {
   const list = sessions();
@@ -454,7 +461,7 @@ function updateBoard() {
     return { s, i, c, col, kind };
   });
   if (boardTab !== 'sessions') return renderBoardTab();
-  const sig = JSON.stringify(rows.map(r => [r.s.id, r.s.project, r.s.title, r.kind, r.c, r.s.main.action, r.s.ended, r.s.history, Math.round((r.s.cost || 0) * 100), alertsOf(r.s).map(a => a.text)]));
+  const sig = JSON.stringify(rows.map(r => [r.s.id, r.s.project, r.s.title, r.kind, r.c, r.s.main.action, r.s.ended, r.s.history, Math.round((r.s.cost || 0) * 100), alertsOf(r.s).map(a => a.text), wfChip(r.s)]));
   if (sig === boardSig) return;
   boardSig = sig;
   const tot = rows.reduce((t, r) => ({ a: t.a + r.c.agents, b: t.b + r.c.busy, w: t.w + r.c.wait, d: t.d + r.c.done }), { a: 0, b: 0, w: 0, d: 0 });
@@ -465,7 +472,7 @@ function updateBoard() {
           ? `<tr class="sec"><td colspan="11">${r.s.wing === 'cowork' ? 'COWORK' : 'CLAUDE CODE'}</td></tr>` : '') +
         `<tr data-sid="${esc(r.s.id)}" class="${r.c.wait ? 'wait' : ''}">` +
         `<td class="fl" style="background:${r.col}">${r.i + 1}</td>` +
-        `<td class="proj">${esc(projName(r.s))}${r.s.demo ? ' [DEMO]' : ''}<small>${esc(r.s.wing === 'cowork' ? r.s.project : (r.s.title || ''))}</small></td>` +
+        `<td class="proj">${esc(projName(r.s))}${r.s.demo ? ' [DEMO]' : ''}${wfChip(r.s)}<small>${esc(r.s.wing === 'cowork' ? r.s.project : (r.s.title || ''))}</small></td>` +
         `<td><span class="kind" style="color:${KIND_COLOR[r.kind]}">${KIND_LABEL[r.kind]}</span></td>` +
         `<td class="num">${p2(r.c.agents)}</td><td class="num">${p2(r.c.busy)}</td>` +
         `<td class="num" style="color:${r.c.wait ? C.red : ''}">${p2(r.c.wait)}</td><td class="num">${p2(r.c.done)}</td>` +

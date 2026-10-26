@@ -680,3 +680,5 @@ body.tiny .balloon .ung { display: none; }
 #teams .msgs li { margin-bottom: 3px; overflow-wrap: anywhere; }
 #teams .msgs .t { color: var(--dim); } #teams .msgs b { color: #9fd8ff; font-weight: normal; }
 @media (max-width: 760px) { #teams .ph { grid-template-columns: 1fr 1.4fr auto; } #teams .pc { display: none; } }
+#archive .wfn { font-family: 'PS2P'; font-size: 7px; font-weight: normal; color: #000; background: var(--blue); padding: 1px 3px; margin-left: 4px; }
+#board .wfn { font-family: 'PS2P'; font-size: 7px; font-weight: normal; color: #000; background: var(--blue); padding: 1px 3px; margin-left: 4px; vertical-align: 2px; }
