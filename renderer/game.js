@@ -134,8 +134,15 @@ function toast(msg, ok = true) {
   el.textContent = msg; el.className = ok ? 'ok' : 'ko'; el.hidden = false;
   clearTimeout(toast._t); toast._t = setTimeout(() => { el.hidden = true; }, 3500);
 }
+// SQUADRE: workflow, squadre e messaggi tra agenti della sessione (solo se ce ne sono)
+function teamsButton(s) {
+  const ti = window.teamsInfo ? teamsInfo(s) : null;
+  if (!ti || !ti.any) return '';
+  return '<button data-do="teams" title="' + esc(tr('Workflow, squadre e messaggi tra agenti (W)')) + '">' + tr('SQUADRE') + (ti.workflows ? ' · ' + ti.workflows : '') + '</button>';
+}
 async function sessionAction(what, sid) {
   if (what === 'book') return window.openBottega && openBottega(sid);
+  if (what === 'teams') return window.openTeams && openTeams(sid);
   if (what === 'focus') {
     const r = await api('/api/focus', { sid });
     toast(r.ok ? (r.approx ? tr('Ho portato in primo piano {app} (non sono sicuro della finestra esatta)', { app: r.app || tr('l\'app') }) : tr('Finestra in primo piano: {app}', { app: r.app || '' })) : (r.reason || tr('Non trovata')), r.ok);
@@ -963,6 +970,11 @@ function computeGroups(s) {
     const top = topOf(a);
     if (groups.has('mgr:' + a.id) && top === a) continue; // è il capo reparto
     if (top !== a && groups.has('mgr:' + top.id)) { groups.get('mgr:' + top.id).members.push(a); continue; }
+    if (a.workflow) { // gli agenti di un Workflow: una sala per esecuzione e fase
+      const run = (s.workflows || []).find(r => r.id === a.workflow), wname = (run && run.name) || tr('workflow');
+      ensure('grp:wf:' + a.workflow + ':' + (a.phase || ''), { kind: 'grp', manager: null, title: a.phase ? tr('WORKFLOW {name} · {phase}', { name: wname, phase: a.phase }) : tr('WORKFLOW {name}', { name: wname }), type: null }).members.push(a);
+      continue;
+    }
     const k = a.team ? 'team:' + a.team : 'type:' + a.type;
     ensure('grp:' + k, { kind: 'grp', manager: null, title: a.team ? tr('SQUADRA {name}', { name: a.team.toUpperCase() }) : tr('SALA {type}', { type: String(a.type).toUpperCase() }), type: a.team ? null : a.type }).members.push(a);
   }
@@ -1181,7 +1193,7 @@ function updateFloorLabels() {
       `<em>${tr('{n} token', { n: tokText((s.tokens || {}).total) })}</em></div>` +
       (alertsOf(s).length ? `<ul class="alerts">${alertsOf(s).slice(0, 4).map(a => `<li class="lv-${a.level}">${esc(a.text)}</li>`).join('')}</ul>` : '') +
       `<div class="t">${esc(s.cwd || '')}</div>` +
-      (!s._replay ? '<div class="btns">' + (!s.demo ? '<button data-do="focus" title="' + esc(tr('Porta in primo piano il terminale o la finestra di questa sessione')) + '">' + tr('FINESTRA') + '</button><button data-do="folder">' + tr('CARTELLA') + '</button>' : '') + '<button data-do="book" title="' + esc(tr('Le lezioni di questo progetto, dedotte dalle sessioni')) + '">' + tr('LIBRO') + '</button></div>' : ''));
+      (!s._replay ? '<div class="btns">' + (!s.demo ? '<button data-do="focus" title="' + esc(tr('Porta in primo piano il terminale o la finestra di questa sessione')) + '">' + tr('FINESTRA') + '</button><button data-do="folder">' + tr('CARTELLA') + '</button>' : '') + '<button data-do="book" title="' + esc(tr('Le lezioni di questo progetto, dedotte dalle sessioni')) + '">' + tr('LIBRO') + '</button>' + teamsButton(s) + '</div>' : '<div class="btns">' + teamsButton(s) + '</div>'));
     for (const btn of b.querySelectorAll('button[data-do]')) btn.onclick = () => sessionAction(btn.dataset.do, s.id);
     b.style.pointerEvents = 'auto';
     placeLabel(b, bx * scale, (WALL_H + 10) * scale, Math.min(320, avail) * scale);
@@ -3198,6 +3210,10 @@ window.addEventListener('keydown', e => {
   else if (k === '/' || k === 'k') { e.preventDefault(); toggleSearch(); }
   else if (k === 'm') toggleWidget();
   else if (k === 'o') toggleSettings();
+  else if (k === 'w') { // squadre: workflow, squadre e messaggi del piano
+    if (window.teamsOpen && teamsOpen()) closeTeams();
+    else { const s = viewSid === 'replay' ? (replayFrame && replayFrame.session) : sessionById(viewSid); if (s && window.openTeams) openTeams(s.id); }
+  }
   else if (k === 'g') { // mappa della realtà dell'agente selezionato (o del capo del piano)
     if (window.worldMapOpen && worldMapOpen()) closeWorldMap();
     else { const s = viewSid === 'replay' ? (replayFrame && replayFrame.session) : sessionById(viewSid); if (s) openWorldMap(s.id, focusId || 'main', viewSid === 'replay'); }
@@ -3211,7 +3227,7 @@ window.addEventListener('keydown', e => {
   else if (k === 'escape') {
     // dall'area relax si torna in atrio, se non c'è niente di aperto da chiudere
     if (viewSid === 'relax' && $('#help').hidden && $('#settings').hidden && $('#search').hidden && !(window.worldMapOpen && worldMapOpen())) goTo(null);
-    if (window.closeWorldMap) closeWorldMap(); if (window.closeBottega) closeBottega(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; { const sb = $('#settings'); if (!sb.hidden) { if (sb._tryClose) sb._tryClose(); else sb.hidden = true; } } roomListKey = null;
+    if (window.closeWorldMap) closeWorldMap(); if (window.closeBottega) closeBottega(); if (window.closeTeams) closeTeams(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; { const sb = $('#settings'); if (!sb.hidden) { if (sb._tryClose) sb._tryClose(); else sb.hidden = true; } } roomListKey = null;
   }
 });
 window.addEventListener('resize', () => { if (snap) reconcile(); });

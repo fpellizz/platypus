@@ -638,3 +638,45 @@ body.tiny .balloon .ung { display: none; }
 #bottega .md .mh .dim { font-family: 'VT'; font-size: 14px; }
 #bottega .md pre { white-space: pre-wrap; font-family: 'VT'; font-size: 15px; background: #000; color: var(--ink); padding: 6px; margin: 0 0 6px; max-height: 30vh; overflow: auto; }
 #bottega button[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* ---------- squadre: workflow, squadre e reparti, messaggi tra agenti ---------- */
+#teams { position: absolute; right: 10px; top: 10px; bottom: 10px; z-index: 4000; width: min(600px, calc(100% - 20px)); display: flex; flex-direction: column;
+  background: #14111f; border: 3px solid var(--blue); box-shadow: 5px 5px 0 #000; padding: 10px 12px; font-size: 17px; }
+#teams[hidden] { display: none !important; }
+#teams h3 { font-family: 'PS2P'; font-size: 10px; color: var(--blue); margin: 0 26px 6px 0; }
+#teams h4 { font-family: 'PS2P'; font-size: 8px; color: var(--yellow); margin: 12px 0 6px; font-weight: normal; }
+#teams .x { position: absolute; right: 10px; top: 8px; font-family: 'PS2P'; font-size: 10px; cursor: pointer; color: var(--dim); }
+#teams .honest { margin: 0 0 4px; color: var(--dim); font-size: 15px; }
+#teams .list { flex: 1; min-height: 0; overflow: auto; }
+#teams .dim { color: var(--dim); }
+#teams .wf, #teams .grp { border: 2px solid #2a2440; padding: 6px 8px; margin-bottom: 6px; }
+#teams .wf.run { border-color: #3a3410; }
+#teams .wf.ko { border-color: #4a1420; }
+#teams .rh { overflow-wrap: anywhere; }
+#teams .rn { color: var(--ink); }
+#teams .chip { font-family: 'PS2P'; font-size: 7px; font-weight: normal; color: #000; background: #c2c3c7; padding: 2px 4px; margin-right: 2px; }
+#teams .chip.run { background: var(--yellow); } #teams .chip.ok { background: var(--green); } #teams .chip.ko { background: var(--red); color: #fff; } #teams .chip.off { background: #5f574f; color: #fff; }
+#teams .rm { color: var(--dim); font-size: 15px; margin: 2px 0 4px; }
+#teams .rm .live { color: var(--yellow); }
+/* una riga per fase: nome, barra (fatti, in corso, falliti, fermati), conteggio, costo e durata */
+#teams .ph { display: grid; grid-template-columns: minmax(70px, 1.3fr) 2fr auto minmax(90px, auto); gap: 8px; align-items: center; font-size: 15px; margin: 2px 0; }
+#teams .ph.now .pt { color: var(--yellow); }
+#teams .pt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#teams .pbar { display: flex; height: 8px; background: #2a2440; }
+#teams .pbar.empty { background: repeating-linear-gradient(90deg, #2a2440 0 4px, transparent 4px 8px); }
+#teams .pbar i { display: block; height: 100%; }
+#teams .pbar .d { background: var(--green); } #teams .pbar .r { background: var(--yellow); } #teams .pbar .f { background: var(--red); } #teams .pbar .s { background: #5f574f; }
+#teams .pn { white-space: nowrap; } #teams .pn .ko { color: var(--red); font-weight: normal; }
+#teams .pc { color: var(--dim); white-space: nowrap; text-align: right; }
+#teams .fl { font-size: 15px; color: var(--red); margin-top: 4px; }
+#teams .fl span { color: var(--ink); background: #3a1420; padding: 0 4px; margin: 0 2px; }
+#teams .an { font-size: 15px; margin-top: 4px; color: var(--ink); }
+#teams .an b { font-family: 'PS2P'; font-size: 7px; font-weight: normal; color: var(--blue); margin-right: 4px; }
+#teams .sm { font-size: 15px; color: var(--dim); margin-top: 4px; }
+#teams .mem { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+#teams .m { font-size: 15px; padding: 0 4px; border: 1px solid #2a2440; }
+#teams .m.run { border-color: var(--yellow); } #teams .m.wait { border-color: var(--red); color: var(--red); } #teams .m.done { color: var(--dim); } #teams .m.idle { border-color: var(--green); }
+#teams .msgs { margin: 0; padding-left: 0; list-style: none; font-size: 15px; }
+#teams .msgs li { margin-bottom: 3px; overflow-wrap: anywhere; }
+#teams .msgs .t { color: var(--dim); } #teams .msgs b { color: #9fd8ff; font-weight: normal; }
+@media (max-width: 760px) { #teams .ph { grid-template-columns: 1fr 1.4fr auto; } #teams .pc { display: none; } }
