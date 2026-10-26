@@ -682,3 +682,5 @@ body.tiny .balloon .ung { display: none; }
 @media (max-width: 760px) { #teams .ph { grid-template-columns: 1fr 1.4fr auto; } #teams .pc { display: none; } }
 #archive .wfn { font-family: 'PS2P'; font-size: 7px; font-weight: normal; color: #000; background: var(--blue); padding: 1px 3px; margin-left: 4px; }
 #board .wfn { font-family: 'PS2P'; font-size: 7px; font-weight: normal; color: #000; background: var(--blue); padding: 1px 3px; margin-left: 4px; vertical-align: 2px; }
+/* fumetto di fianco alla testa: senza la punta */
+.balloon.beside::after { display: none; }

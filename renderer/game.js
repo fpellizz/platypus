@@ -2733,6 +2733,9 @@ function placeBalloons(items) {
   items.sort((a, b) => b.prio - a.prio || a.c.y - b.c.y);
   const placed = [...labels.values()].filter(e => e.style.display !== 'none').map(e => e._rect).filter(Boolean);
   const maxX = W * scale, gap = 3;
+  // anche i personaggi sono ostacoli: un fumetto non deve coprire la testa o il busto di nessuno, nemmeno del suo
+  const bodies = [];
+  for (const o of [...chars.values(), ...npcs]) if (o.alpha == null || o.alpha > 0.3) bodies.push({ o, x: (o.x - 7) * scale, y: (o.y - 25) * scale, w: 14 * scale, h: 20 * scale });
   const overlap = r => {
     let area = 0;
     for (const p of placed) {
@@ -2740,12 +2743,18 @@ function placeBalloons(items) {
       const oy = Math.min(r.y + r.h, p.y + p.h) - Math.max(r.y, p.y) + gap;
       if (ox > 0 && oy > 0) area += ox * oy;
     }
+    for (const b of bodies) {
+      const ox = Math.min(r.x + r.w, b.x + b.w) - Math.max(r.x, b.x), oy = Math.min(r.y + r.h, b.y + b.h) - Math.max(r.y, b.y);
+      if (ox > 0 && oy > 0) area += 1.5 * ox * oy;
+    }
     return area;
   };
   for (const it of items) {
     const { c, bw, bh, hx, top } = it;
     const sideL = hx - bw + 14, sideR = hx - 14, center = hx - bw / 2;
-    const cands = [[center, top], [sideL, top], [sideR, top], [center, top - bh - 4], [sideL, top - bh - 4], [sideR, top - bh - 4], [center, top + bh * 0.5 + 30]];
+    // sopra la testa (centro, sinistra, destra), poi di fianco alla testa (senza punta), poi più in alto, poi sotto
+    const headY = top + bh + 8, besideY = headY - bh / 2;
+    const cands = [[center, top], [sideL, top], [sideR, top], [hx + 10 * scale, besideY], [hx - 10 * scale - bw, besideY], [center, top - bh - 4], [sideL, top - bh - 4], [sideR, top - bh - 4], [center, top + bh * 0.5 + 30]];
     const order = c._cand != null ? [c._cand, ...cands.keys()] : [...cands.keys()];
     let best = null, bestScore = Infinity;
     for (const i of order) {
@@ -2759,7 +2768,8 @@ function placeBalloons(items) {
     c._cand = best.i;
     placed.push(best.r);
     c.el.style.setProperty('--tail', Math.max(8, Math.min(bw - 10, hx - best.r.x - 4)) + 'px');
-    c.el.classList.toggle('below', best.i === 6);
+    c.el.classList.toggle('below', best.i === 8);
+    c.el.classList.toggle('beside', best.i === 3 || best.i === 4);
     c.el.style.transform = `translate(${Math.round(best.r.x)}px, ${Math.round(best.r.y)}px)`;
     c.el.style.zIndex = focusId === c.id ? '999' : String(10 + it.prio * 100 + Math.round(c.y / 4));
   }
