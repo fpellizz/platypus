@@ -12,6 +12,11 @@ const { tr, trn, money } = require('./i18n');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 app.setAppUserModelId('com.platypus.desktop');
+// Windows: un CLSID fisso per le notifiche, scritto anche nel collegamento del menu Start (ensureStartMenuShortcut).
+// Senza, Electron ne inventa uno a ogni avvio e crea un suo collegamento "Electron.lnk" con lo stesso ID e
+// l'icona di Electron, che Windows usa poi per la barra delle applicazioni al posto della nostra.
+const TOAST_CLSID = '{7C3E2B19-5A84-4F6D-9B21-0D8E6F4A3C57}';
+if (process.platform === 'win32' && typeof app.setToastActivatorCLSID === 'function') { try { app.setToastActivatorCLSID(TOAST_CLSID); } catch {} }
 // Linux: app_id su Wayland e WM_CLASS su X11 = "platypus", come il file platypus.desktop (icona e raggruppamento)
 if (process.platform === 'linux') app.setDesktopName('platypus.desktop');
 
@@ -184,7 +189,7 @@ function checkReport() {
   if (cfg.reportDay === day || reportShownDay === day) return;
   if (now.getHours() < hour) return;
   reportShownDay = day; cfg.reportDay = day; saveCfg();
-  if (cfg.notify === false || !Notification.isSupported()) return;
+  if (cfg.notify === false || !canNotify()) return;
   let r = null;
   try { r = core.stats.report(); } catch {}
   if (!r || (!r.projects.length && !process.env.PLATYPUS_NOTIFY_TEST)) return; // giornata vuota: niente avviso
@@ -300,7 +305,7 @@ function checkWaiting() {
   // all'avvio non notifichiamo le attese già in corso: le vedi aprendo la finestra
   if (!notifyPrimed) { notifyPrimed = true; return; }
   if (process.env.PLATYPUS_DEBUG && fresh.length) console.log('[notify] nuove attese:', fresh.length, 'supportate:', Notification.isSupported(), 'finestra attiva:', !!(win && win.isFocused()));
-  if (!fresh.length || cfg.notify === false || !Notification.isSupported()) return;
+  if (!fresh.length || cfg.notify === false || !canNotify()) return;
   if (win && win.isVisible() && win.isFocused() && !process.env.PLATYPUS_NOTIFY_TEST) return;
   const first = fresh[0];
   const title = fresh.length === 1
@@ -333,7 +338,7 @@ function checkAlerts() {
   });
   for (const k of [...alertSeen]) if (!current.has(k)) alertSeen.delete(k);
   if (!alertsPrimed) { alertsPrimed = true; return; }
-  if (!fresh.length || snap.settings.alertsNotify === false || cfg.notify === false || !Notification.isSupported()) return;
+  if (!fresh.length || snap.settings.alertsNotify === false || cfg.notify === false || !canNotify()) return;
   if (win && win.isVisible() && win.isFocused() && !process.env.PLATYPUS_NOTIFY_TEST) return;
   const first = fresh[0];
   const n = new Notification({
@@ -354,6 +359,9 @@ function scheduleWaitCheck() {
   waitTimer = setTimeout(() => { waitTimer = null; try { checkWaiting(); } catch {} try { checkAlerts(); } catch {} }, 300);
 }
 
+// niente notifiche nelle prove automatiche (modalità snapshot): Electron registrerebbe l'app nel menu Start vero
+function canNotify() { return !process.env.PLATYPUS_SNAPSHOT && Notification.isSupported(); }
+
 // Su Windows i toast di un'app non installata compaiono solo se esiste un collegamento
 // nel menu Start con lo stesso AppUserModelID: lo creiamo una volta (comodo anche per avviarla).
 function ensureStartMenuShortcut() {
@@ -364,8 +372,14 @@ function ensureStartMenuShortcut() {
     try { fs.rmSync(path.join(programs, 'Agent Office.lnk'), { force: true }); } catch {} // il vecchio nome
     // dai sorgenti: Electron con la cartella del repository come argomento, e la nostra icona
     const opts = app.isPackaged
-      ? { target: process.execPath, appUserModelId: 'com.platypus.desktop', description: 'Platypus', icon: process.execPath, iconIndex: 0 }
-      : { target: process.execPath, args: `"${ROOT}"`, cwd: ROOT, appUserModelId: 'com.platypus.desktop', description: 'Platypus', icon: path.join(ROOT, 'build', 'icon.ico'), iconIndex: 0 };
+      ? { target: process.execPath, appUserModelId: 'com.platypus.desktop', toastActivatorClsid: TOAST_CLSID, description: 'Platypus', icon: process.execPath, iconIndex: 0 }
+      : { target: process.execPath, args: `"${ROOT}"`, cwd: ROOT, appUserModelId: 'com.platypus.desktop', toastActivatorClsid: TOAST_CLSID, description: 'Platypus', icon: path.join(ROOT, 'build', 'icon.ico'), iconIndex: 0 };
+    // il collegamento che Electron si era creato da solo (stesso ID, nessun argomento, icona di Electron): via
+    const stray = path.join(programs, 'Electron.lnk');
+    try {
+      const d = shell.readShortcutLink(stray);
+      if (d && d.appUserModelId === 'com.platypus.desktop' && !d.args && path.resolve(d.target || '') === path.resolve(process.execPath)) fs.rmSync(stray, { force: true });
+    } catch {}
     shell.writeShortcutLink(lnk, fs.existsSync(lnk) ? 'update' : 'create', opts);
   } catch {}
 }
