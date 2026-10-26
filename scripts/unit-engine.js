@@ -233,6 +233,25 @@ function planBoardTests(ok) {
   use('ExitPlanMode', { plan: '# Vecchio stile\n## Uno\n## Due' });
   ok(s.plan.title === 'Vecchio stile' && s.plan.steps.join('|') === 'Uno|Due', 'versioni vecchie: piano nell\'input');
   ok(isPlanFile('/home/u/.claude/plans/a.md') && isPlanFile(file) && !isPlanFile('/home/u/proj/docs/plans/2.9.md'), 'solo i piani di Claude Code, non i docs/plans del progetto');
+  // app desktop: il piano sta in una cartella di lavoro della sessione, non in .claude/plans
+  const S2 = 'sess-plan-0002';
+  const use2 = (name, input) => { const id = 'q' + (++k); now += 1000; st.applyTranscriptLine(S2, null, { type: 'assistant', timestamp: iso(now), cwd: '/p', message: { id: 'n' + k, role: 'assistant', content: [{ type: 'tool_use', id, name, input }], usage: { input_tokens: 1, output_tokens: 1 } } }); return id; };
+  use2('Write', { file_path: 'C:\\Users\\me\\AppData\\Local\\Temp\\claude\\D--work-app\\abc123\\plan\\plan.md', content: '# Nuovo export\n1. Query\n2. CSV' });
+  use2('ExitPlanMode', {});
+  const s2 = st.sessions.get(S2);
+  ok(s2.plan && s2.plan.title === 'Nuovo export' && s2.plan.steps.join('|') === 'Query|CSV', 'piano in una cartella di lavoro dell\'app desktop: arriva sulla lavagna');
+  // solo una Edit nel transcript: il testo si legge dal file
+  const tmpPlan = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-')), 'plan.md');
+  fs.writeFileSync(tmpPlan, '# Dal disco\n1. Uno\n2. Due');
+  use2('Edit', { file_path: tmpPlan, old_string: 'x', new_string: 'y' });
+  use2('ExitPlanMode', {});
+  ok(s2.plan.title === 'Dal disco' && s2.plan.steps.join('|') === 'Uno|Due', 'senza il testo nel transcript il piano si legge dal file');
+  fs.rmSync(path.dirname(tmpPlan), { recursive: true, force: true });
+  // un .md scritto molto prima non è il piano
+  const S3 = 'sess-plan-0003';
+  now += 1000; st.applyTranscriptLine(S3, null, { type: 'assistant', timestamp: iso(now), cwd: '/p', message: { id: 'o1', role: 'assistant', content: [{ type: 'tool_use', id: 'o1', name: 'Write', input: { file_path: '/p/README.md', content: '# Leggimi\n- a\n- b' } }], usage: { input_tokens: 1, output_tokens: 1 } } });
+  now += 60 * 60000; st.applyTranscriptLine(S3, null, { type: 'assistant', timestamp: iso(now), cwd: '/p', message: { id: 'o2', role: 'assistant', content: [{ type: 'tool_use', id: 'o2', name: 'ExitPlanMode', input: {} }], usage: { input_tokens: 1, output_tokens: 1 } } });
+  ok(!st.sessions.get(S3).plan, 'un .md toccato un\'ora prima non viene preso per il piano');
   const p = parsePlan('# Titolo\n## Contesto\n## Modifiche\n### 1. Primo [link](http://x)\n### 2. Secondo `codice`\n## Verifica');
   ok(p.steps.join('|') === 'Primo link|Secondo codice', 'passi numerati anche nei titoli, senza markdown: ' + p.steps.join(' · '));
   ok(parsePlan('# T\n## Analisi\n## Refresh\n## Test').steps.join('|') === 'Analisi|Refresh|Test', 'senza numeri: i titoli ##');
