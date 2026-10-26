@@ -17,6 +17,12 @@ const BUSY = new Set(['working', 'thinking', 'writing']);
 const USER_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode']);
 
 // il file del piano di Claude Code: <cartella di configurazione>/plans/<nome>.md (es. ~/.claude/plans/…)
+// un piano scritto da più di così prima di ExitPlanMode non è quello che viene presentato
+const PLAN_DRAFT_MS = 45 * 60 * 1000;
+// il file del piano quando il transcript non ne ha il testo (solo .md, piccolo, se c'è ancora)
+function readPlanFile(p) {
+  try { if (!/.md$/i.test(p) || require('fs').statSync(p).size > 256 * 1024) return ''; return require('fs').readFileSync(p, 'utf8'); } catch { return ''; }
+}
 function isPlanFile(p) { return typeof p === 'string' && /[\\/]\.claude[^\\/]*[\\/]plans[\\/][^\\/]+\.md$/i.test(p); }
 
 // titolo e passi di un piano in markdown: prima le voci numerate (anche "### 1. …"), poi i titoli ##, poi gli elenchi
@@ -237,7 +243,8 @@ class OfficeState extends EventEmitter {
         tasks: new Map(),        // id -> {content, status} per TaskCreate/TaskUpdate
         taskSeq: 0,
         plan: null,              // {title, steps[], at}
-        planDraft: null,         // {path, text}: il file del piano mentre Claude lo scrive
+        planDraft: null,         // {path, text, t}: il file in <config>/plans/ mentre Claude lo scrive
+        mdDraft: null,           // {path, text, t}: l'ultimo .md toccato altrove (il piano nell'app desktop)
         workflows: new Map(),    // runId -> esecuzione di un Workflow (vedi ensureRun)
         workflowCalls: new Map(), // toolUseId dello strumento Workflow -> {description, t}
         messages: [],            // SendMessage tra agenti: {t, from, to, toId, summary}
@@ -518,21 +525,30 @@ class OfficeState extends EventEmitter {
         if (input.subject) t.text = clip(input.subject, 60);
         s.todos = this.boardTodos(s); s.todosAt = ts;
       }
-    } else if ((tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit') && isPlanFile(input.file_path)) {
-      // Claude Code scrive il piano in <config>/plans/*.md e poi chiama ExitPlanMode senza contenuto: lo seguiamo qui
-      const p = String(input.file_path);
-      if (tool === 'Write') s.planDraft = { path: p, text: String(input.content || '') };
-      else if (s.planDraft && s.planDraft.path === p && s.planDraft.text != null) {
+    } else if ((tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit') && /.md$/i.test(String(input.file_path || ''))) {
+      // Claude Code scrive il piano in un file .md e poi chiama ExitPlanMode senza contenuto. Il file sta in
+      // <config>/plans/ o, nell'app desktop, in una cartella di lavoro della sessione: in modalità piano Claude può
+      // scrivere solo quello, quindi vale l'ultimo .md toccato prima di ExitPlanMode (quelli in plans/ hanno la precedenza)
+      const p = String(input.file_path), key = isPlanFile(p) ? 'planDraft' : 'mdDraft';
+      const d = s[key] && s[key].path === p ? s[key] : null;
+      if (tool === 'Write') s[key] = { path: p, text: String(input.content || ''), t: ts };
+      else if (d && d.text != null) {
         const edits = tool === 'MultiEdit' ? (Array.isArray(input.edits) ? input.edits : []) : [input];
         for (const e of edits) {
-          if (!e || typeof e.old_string !== 'string' || !e.old_string || !s.planDraft.text.includes(e.old_string)) continue;
+          if (!e || typeof e.old_string !== 'string' || !e.old_string || !d.text.includes(e.old_string)) continue;
           const nw = String(e.new_string ?? '');
-          s.planDraft.text = e.replace_all ? s.planDraft.text.split(e.old_string).join(nw) : s.planDraft.text.replace(e.old_string, () => nw);
+          d.text = e.replace_all ? d.text.split(e.old_string).join(nw) : d.text.replace(e.old_string, () => nw);
         }
-      } else s.planDraft = { path: p, text: null }; // scritto prima della parte di transcript che abbiamo letto
+        d.t = ts;
+      } else s[key] = { path: p, text: null, t: ts }; // scritto prima della parte di transcript che abbiamo letto: si rilegge dal disco
     } else if (tool === 'ExitPlanMode') {
       // le versioni vecchie passano il piano nell'input; quelle nuove lo lasciano nel file
-      const text = typeof input.plan === 'string' && input.plan.trim() ? input.plan : s.planDraft && s.planDraft.text;
+      let text = typeof input.plan === 'string' && input.plan.trim() ? input.plan : '';
+      if (!text) {
+        const recent = d => d && ts - (d.t || 0) < PLAN_DRAFT_MS;
+        const d = recent(s.planDraft) ? s.planDraft : recent(s.mdDraft) ? s.mdDraft : null;
+        if (d) text = d.text != null ? d.text : readPlanFile(d.path);
+      }
       if (text) this.setPlan(s, text, ts);
     }
   }

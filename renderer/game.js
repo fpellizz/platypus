@@ -979,7 +979,9 @@ function computeGroups(s) {
     if (top !== a && groups.has('mgr:' + top.id)) { groups.get('mgr:' + top.id).members.push(a); continue; }
     if (a.workflow) { // gli agenti di un Workflow: una sala per esecuzione e fase
       const run = (s.workflows || []).find(r => r.id === a.workflow), wname = (run && run.name) || tr('workflow');
-      ensure('grp:wf:' + a.workflow + ':' + (a.phase || ''), { kind: 'grp', manager: null, title: a.phase ? tr('WORKFLOW {name} · {phase}', { name: wname, phase: a.phase }) : tr('WORKFLOW {name}', { name: wname }), type: null }).members.push(a);
+      // prima la fase (è quella che serve sul piano), poi il nome dell'esecuzione accorciato: il resto è nel pannello SQUADRE
+      const wshort = wname.length > 24 ? wname.slice(0, 23) + '…' : wname;
+      ensure('grp:wf:' + a.workflow + ':' + (a.phase || ''), { kind: 'grp', manager: null, title: a.phase ? tr('WF {phase} · {name}', { name: wshort, phase: a.phase }) : tr('WF {name}', { name: wshort }), type: null }).members.push(a);
       continue;
     }
     const k = a.team ? 'team:' + a.team : 'type:' + a.type;
@@ -1058,6 +1060,15 @@ function layoutFloor(s) {
   const maxRight = W - 10;
   let x = LM, y = officeBottom + 26, lineH = 0, line = 0;
   const lineYs = [y];
+  // sala creativa con le due lavagne: per prima, subito sotto l'ufficio del capo, così la lista e il piano
+  // si vedono senza scorrere anche sui piani con tante sale
+  const CW = 2 * BOARD_W + 3 * 14, CH = 18 + BOARD_H + 34;
+  const creative = { x, y, w: CW, h: CH, line, doorX: x + 21, key: 'creative', color: C.yellow, g: { kind: 'creative', members: [], key: 'creative' } };
+  creative.boards = ['A', 'B'].map((k, i) => {
+    const bx = x + 14 + i * (BOARD_W + 14), by = y + 22;
+    return { key: k, x: bx, y: by, w: BOARD_W, h: BOARD_H, spot: { x: bx + 18, y: by + BOARD_H + 18 } };
+  });
+  x += CW + 18; lineH = CH;
   for (const g of groups) {
     const seats = assignSeats(s.id, g);
     const cap = seats.length;
@@ -1075,15 +1086,6 @@ function layoutFloor(s) {
     x += w + 18;
     lineH = Math.max(lineH, h);
   }
-  // sala creativa con le due lavagne
-  const CW = 2 * BOARD_W + 3 * 14, CH = 18 + BOARD_H + 34;
-  if (x > LM && x + CW > maxRight) { y += lineH + 24; x = LM; lineH = 0; line++; lineYs.push(y); }
-  const creative = { x, y, w: CW, h: CH, line, doorX: x + 21, key: 'creative', color: C.yellow, g: { kind: 'creative', members: [], key: 'creative' } };
-  creative.boards = ['A', 'B'].map((k, i) => {
-    const bx = x + 14 + i * (BOARD_W + 14), by = y + 22;
-    return { key: k, x: bx, y: by, w: BOARD_W, h: BOARD_H, spot: { x: bx + 18, y: by + BOARD_H + 18 } };
-  });
-  lineH = Math.max(lineH, CH);
   const contentH = y + lineH + 20;
   scale = baseScale();
   applySize(contentH);
@@ -1672,6 +1674,8 @@ function updateBoardLabels() {
       html = `<span class="sig">${tr('di {name}', { name: esc(ct.author) })}</span>`;
     } else if (!ct && g.key === 'A') {
       html = '<span class="more">' + tr('La lista di Claude comparirà qui') + '</span>';
+    } else if (!ct && g.key === 'B') {
+      html = '<span class="more">' + tr('Il piano di Claude comparirà qui (modalità piano)') + '</span>';
     }
     if (b.down) html = '';
     setHtml(el, html);
@@ -2731,6 +2735,9 @@ function placeBalloons(items) {
   items.sort((a, b) => b.prio - a.prio || a.c.y - b.c.y);
   const placed = [...labels.values()].filter(e => e.style.display !== 'none').map(e => e._rect).filter(Boolean);
   const maxX = W * scale, gap = 3;
+  // anche i personaggi sono ostacoli: un fumetto non deve coprire la testa o il busto di nessuno, nemmeno del suo
+  const bodies = [];
+  for (const o of [...chars.values(), ...npcs]) if (o.alpha == null || o.alpha > 0.3) bodies.push({ o, x: (o.x - 7) * scale, y: (o.y - 25) * scale, w: 14 * scale, h: 20 * scale });
   const overlap = r => {
     let area = 0;
     for (const p of placed) {
@@ -2738,12 +2745,18 @@ function placeBalloons(items) {
       const oy = Math.min(r.y + r.h, p.y + p.h) - Math.max(r.y, p.y) + gap;
       if (ox > 0 && oy > 0) area += ox * oy;
     }
+    for (const b of bodies) {
+      const ox = Math.min(r.x + r.w, b.x + b.w) - Math.max(r.x, b.x), oy = Math.min(r.y + r.h, b.y + b.h) - Math.max(r.y, b.y);
+      if (ox > 0 && oy > 0) area += 1.5 * ox * oy;
+    }
     return area;
   };
   for (const it of items) {
     const { c, bw, bh, hx, top } = it;
     const sideL = hx - bw + 14, sideR = hx - 14, center = hx - bw / 2;
-    const cands = [[center, top], [sideL, top], [sideR, top], [center, top - bh - 4], [sideL, top - bh - 4], [sideR, top - bh - 4], [center, top + bh * 0.5 + 30]];
+    // sopra la testa (centro, sinistra, destra), poi di fianco alla testa (senza punta), poi più in alto, poi sotto
+    const headY = top + bh + 8, besideY = headY - bh / 2;
+    const cands = [[center, top], [sideL, top], [sideR, top], [hx + 10 * scale, besideY], [hx - 10 * scale - bw, besideY], [center, top - bh - 4], [sideL, top - bh - 4], [sideR, top - bh - 4], [center, top + bh * 0.5 + 30]];
     const order = c._cand != null ? [c._cand, ...cands.keys()] : [...cands.keys()];
     let best = null, bestScore = Infinity;
     for (const i of order) {
@@ -2757,7 +2770,8 @@ function placeBalloons(items) {
     c._cand = best.i;
     placed.push(best.r);
     c.el.style.setProperty('--tail', Math.max(8, Math.min(bw - 10, hx - best.r.x - 4)) + 'px');
-    c.el.classList.toggle('below', best.i === 6);
+    c.el.classList.toggle('below', best.i === 8);
+    c.el.classList.toggle('beside', best.i === 3 || best.i === 4);
     c.el.style.transform = `translate(${Math.round(best.r.x)}px, ${Math.round(best.r.y)}px)`;
     c.el.style.zIndex = focusId === c.id ? '999' : String(10 + it.prio * 100 + Math.round(c.y / 4));
   }
