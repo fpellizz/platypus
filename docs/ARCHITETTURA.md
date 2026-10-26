@@ -25,8 +25,8 @@ Solo moduli di Node.js, nessun pacchetto npm: per questo la modalità browser pa
 | File | Ruolo |
 |---|---|
 | `index.js` | avvio, server HTTP solo su 127.0.0.1, SSE, API, permessi in sospeso |
-| `sources.js` | lettura dei transcript (`projects/**/*.jsonl`), del registro sessioni, ricerca delle cartelle Cowork |
-| `state.js` | stato di sessioni, agenti e sottoagenti, costi, avvisi, lavagne, rilasci |
+| `sources.js` | lettura dei transcript (`projects/**/*.jsonl`, compresi gli agenti dei Workflow in `<sessione>/subagents/workflows/<runId>/` con il loro `journal.jsonl`, e i riepiloghi in `<sessione>/workflows/<runId>.json`) e del registro delle sessioni, ricerca delle cartelle Cowork |
+| `state.js` | stato di sessioni, agenti e sottoagenti, costi, avvisi, lavagne, rilasci, esecuzioni dei Workflow (fasi, costo e tempi per agente) e messaggi tra agenti |
 | `hooks.js` | installazione e rimozione degli hook in `settings.json` |
 | `archive.js` | archivio e replay con orologio virtuale |
 | `osint.js` | integrazione con il sistema: finestra in primo piano, riprendi sessione, apri cartella (Windows / macOS / Linux) |
@@ -67,7 +67,7 @@ Il server rifiuta le richieste con un `Host` o un `Origin` diversi da `127.0.0.1
 
 ## Interfaccia (`renderer/`)
 
-Pagina statica: `index.html`, `style.css`, `game.js` (palazzo, piani, fumetti), `worldmap.js` (mappa della realtà), `report.html`, `i18n-runtime.js`. Parla con il motore solo via HTTP e SSE. L'unico punto di contatto con il guscio è l'oggetto facoltativo `window.officeApp` (se manca, si è nel browser).
+Pagina statica: `index.html`, `style.css`, `game.js` (palazzo, piani, fumetti), `worldmap.js` (mappa della realtà), `bottega.js` (Libro della bottega), `teams.js` (pannello SQUADRE: workflow, squadre, messaggi), `report.html`, `i18n-runtime.js`. Parla con il motore solo via HTTP e SSE. L'unico punto di contatto con il guscio è l'oggetto facoltativo `window.officeApp` (se manca, si è nel browser).
 
 ### Contratto `window.officeApp` (da `src/preload.js`)
 
