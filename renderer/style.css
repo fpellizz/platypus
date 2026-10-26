@@ -659,7 +659,7 @@ body.tiny .balloon .ung { display: none; }
 #teams .rm { color: var(--dim); font-size: 15px; margin: 2px 0 4px; }
 #teams .rm .live { color: var(--yellow); }
 /* una riga per fase: nome, barra (fatti, in corso, falliti, fermati), conteggio, costo e durata */
-#teams .ph { display: grid; grid-template-columns: minmax(70px, 1.3fr) 2fr auto minmax(90px, auto); gap: 8px; align-items: center; font-size: 15px; margin: 2px 0; }
+#teams .ph { display: grid; grid-template-columns: minmax(70px, 1.3fr) 2fr 96px 124px; /* colonne fisse: le barre di tutte le fasi restano allineate */ gap: 8px; align-items: center; font-size: 15px; margin: 2px 0; }
 #teams .ph.now .pt { color: var(--yellow); }
 #teams .pt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #teams .pbar { display: flex; height: 8px; background: #2a2440; }
