@@ -114,12 +114,17 @@
     if (sig === T.sig) return;
     T.sig = sig;
     const scroll = box.querySelector('.list') ? box.querySelector('.list').scrollTop : 0;
-    const name = id => { const a = (s.subs || []).find(x => x.id === id) || (s.main && s.main.id === id ? s.main : null); return a ? agentName(a) : ''; };
+    // il destinatario: l'agente ripreso, oppure quello che ha quel nome o quel tipo sul piano
+    const name = (id, to) => {
+      const subs = s.subs || [], low = String(to || '').toLowerCase();
+      const a = subs.find(x => x.id === id) || (s.main && s.main.id === id ? s.main : null) || subs.find(x => low && ((x.name || '').toLowerCase() === low || String(x.type).toLowerCase() === low));
+      return a ? agentName(a) : '';
+    };
     box.innerHTML = `<span class="x" title="${esc(tr('Chiudi'))}">X</span><h3>${esc(tr('SQUADRE · {name}', { name: (window.projName ? projName(s) : s.project) || '' }))}</h3>` +
       `<p class="honest">${esc(tr('Workflow, squadre e messaggi tra agenti di questa sessione, ricostruiti dai transcript.'))}</p><div class="list">` +
       `<h4>${esc(tr('WORKFLOW'))} <span class="dim">${runs.length}</span></h4>` + (runs.length ? runs.map(r => runCard(r, now)).join('') : `<p class="dim">${esc(tr('Nessun workflow in questa sessione.'))}</p>`) +
       `<h4>${esc(tr('SQUADRE E REPARTI'))} <span class="dim">${groups.length}</span></h4>` + (groups.length ? groups.map(groupCard).join('') : `<p class="dim">${esc(tr('Nessuna squadra: i sottoagenti lavorano ognuno per conto suo.'))}</p>`) +
-      `<h4>${esc(tr('MESSAGGI TRA AGENTI'))} <span class="dim">${msgs.length}</span></h4>` + (msgs.length ? `<ul class="msgs">${msgs.slice(0, 20).map(m => `<li><span class="t">${hhmm(m.t)}</span> <b>${esc(m.from)}</b> → <b>${esc(name(m.toId) || m.to)}</b>${m.summary ? ': ' + esc(m.summary) : ''}</li>`).join('')}</ul>` : `<p class="dim">${esc(tr('Nessun messaggio (SendMessage) tra agenti.'))}</p>`) +
+      `<h4>${esc(tr('MESSAGGI TRA AGENTI'))} <span class="dim">${msgs.length}</span></h4>` + (msgs.length ? `<ul class="msgs">${msgs.slice(0, 20).map(m => `<li><span class="t">${hhmm(m.t)}</span> <b>${esc(m.from)}</b> → <b>${esc(name(m.toId, m.to) || m.to)}</b>${m.summary ? ': ' + esc(m.summary) : ''}</li>`).join('')}</ul>` : `<p class="dim">${esc(tr('Nessun messaggio (SendMessage) tra agenti.'))}</p>`) +
       '</div>';
     box.querySelector('.list').scrollTop = scroll;
     bindClose();

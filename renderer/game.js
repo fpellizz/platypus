@@ -979,7 +979,9 @@ function computeGroups(s) {
     if (top !== a && groups.has('mgr:' + top.id)) { groups.get('mgr:' + top.id).members.push(a); continue; }
     if (a.workflow) { // gli agenti di un Workflow: una sala per esecuzione e fase
       const run = (s.workflows || []).find(r => r.id === a.workflow), wname = (run && run.name) || tr('workflow');
-      ensure('grp:wf:' + a.workflow + ':' + (a.phase || ''), { kind: 'grp', manager: null, title: a.phase ? tr('WORKFLOW {name} · {phase}', { name: wname, phase: a.phase }) : tr('WORKFLOW {name}', { name: wname }), type: null }).members.push(a);
+      // prima la fase (è quella che serve sul piano), poi il nome dell'esecuzione accorciato: il resto è nel pannello SQUADRE
+      const wshort = wname.length > 24 ? wname.slice(0, 23) + '…' : wname;
+      ensure('grp:wf:' + a.workflow + ':' + (a.phase || ''), { kind: 'grp', manager: null, title: a.phase ? tr('WF {phase} · {name}', { name: wshort, phase: a.phase }) : tr('WF {name}', { name: wshort }), type: null }).members.push(a);
       continue;
     }
     const k = a.team ? 'team:' + a.team : 'type:' + a.type;

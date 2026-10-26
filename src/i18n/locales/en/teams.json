@@ -2,8 +2,6 @@
   "Workflow, squadre e messaggi tra agenti (W)": "Workflows, teams and messages between agents (W)",
   "SQUADRE": "TEAMS",
   "workflow": "workflow",
-  "WORKFLOW {name} · {phase}": "WORKFLOW {name} · {phase}",
-  "WORKFLOW {name}": "WORKFLOW {name}",
   "FINITO": "DONE",
   "FALLITO": "FAILED",
   "ANNULLATO": "CANCELLED",
@@ -48,5 +46,7 @@
   "Aspetta i test prima della PR": "Wait for the tests before the PR",
   "{n} workflow: i suoi agenti sono contati qui; nel replay si vedono con SQUADRE (W)": "{n} workflow: its agents are counted here; in the replay they show under TEAMS (W)",
   "{n} workflow: i loro agenti sono contati qui; nel replay si vedono con SQUADRE (W)": "{n} workflows: their agents are counted here; in the replay they show under TEAMS (W)",
-  "{n} WF": "{n} WF"
+  "{n} WF": "{n} WF",
+  "WF {phase} · {name}": "WF {phase} · {name}",
+  "WF {name}": "WF {name}"
 }
