@@ -2,6 +2,8 @@
 // Fonti dati locali di Claude Code:
 //  - transcript JSONL in <config>/projects/<progetto>/<sessione>.jsonl
 //  - sottoagenti in   <config>/projects/<progetto>/<sessione>/subagents/agent-<id>.jsonl (+ .meta.json)
+//  - Workflow:        <sessione>/subagents/workflows/<runId>/agent-<id>.jsonl (+ .meta.json) e journal.jsonl
+//                     (avvii, etichette, fasi, esiti), riepilogo finale in <sessione>/workflows/<runId>.json
 //  - registro sessioni vive in <config>/sessions/<pid>.json
 // Tutto in sola lettura.
 
@@ -34,6 +36,7 @@ class TranscriptWatcher {
     this.files = new Map(); // path -> {offset, partial, sessionId, agentId, metaPath, meta}
     this.wantSessions = new Set(); // sessioni vive (dal registro) da seguire anche se il file è vecchio
     this.trackedSessions = new Set(); // sessioni di cui stiamo leggendo il transcript principale
+    this.runSummaries = new Map(); // riepiloghi dei Workflow già letti: path -> mtime
     this.timers = [];
     this.watcher = null;
   }
@@ -52,6 +55,9 @@ class TranscriptWatcher {
           else this.maybeTrack(p, false);
         } else if (p.endsWith('.meta.json')) {
           this.refreshMeta();
+        } else if (p.endsWith('.json')) {
+          const r = path.relative(this.projectsDir, p).split(path.sep);
+          if (r.length === 4 && r[2] === 'workflows' && this.trackedSessions.has(r[1])) this.readRunSummary(p, r[1]);
         }
       });
       this.watcher.on('error', () => {});
@@ -73,7 +79,23 @@ class TranscriptWatcher {
       const agentId = rel[3].slice(6, -6);
       return { sessionId: rel[1], agentId, metaPath: p.slice(0, -6) + '.meta.json' };
     }
+    // gli agenti di un Workflow e il suo giornale: .../<sid>/subagents/workflows/<runId>/...
+    if (rel.length === 6 && rel[2] === 'subagents' && rel[3] === 'workflows') {
+      if (/^agent-.+\.jsonl$/.test(rel[5])) return { sessionId: rel[1], agentId: rel[5].slice(6, -6), metaPath: p.slice(0, -6) + '.meta.json', runId: rel[4] };
+      if (rel[5] === 'journal.jsonl') return { sessionId: rel[1], agentId: null, runId: rel[4], journal: true };
+    }
     return null;
+  }
+
+  // il riepilogo di un Workflow finito: .../<sid>/workflows/<runId>.json (si rilegge quando cambia)
+  readRunSummary(p, sessionId) {
+    let st;
+    try { st = fs.statSync(p); } catch { return; }
+    if (this.runSummaries.get(p) === st.mtimeMs) return;
+    const o = readJson(p);
+    if (!o || typeof o !== 'object') return;
+    this.runSummaries.set(p, st.mtimeMs);
+    this.state.applyWorkflowSummary(sessionId, String(o.runId || path.basename(p, '.json')), o);
   }
 
   scan(initial) {
@@ -91,9 +113,24 @@ class TranscriptWatcher {
           this.maybeTrack(full, initial, t);
         } else if (e.isDirectory()) {
           const sdir = path.join(full, 'subagents');
-          let subs;
-          try { subs = fs.readdirSync(sdir); } catch { continue; }
+          let subs = [];
+          try { subs = fs.readdirSync(sdir); } catch {}
           for (const f of subs) if (f.endsWith('.jsonl')) this.maybeTrack(path.join(sdir, f), initial, t);
+          // Workflow: agenti e giornale di ogni esecuzione, poi i riepiloghi di quelle finite
+          if (subs.includes('workflows')) {
+            let runs = [];
+            try { runs = fs.readdirSync(path.join(sdir, 'workflows'), { withFileTypes: true }).filter(x => x.isDirectory()); } catch {}
+            for (const r of runs) {
+              let fl = [];
+              try { fl = fs.readdirSync(path.join(sdir, 'workflows', r.name)); } catch {}
+              for (const f of fl) if (f.endsWith('.jsonl')) this.maybeTrack(path.join(sdir, 'workflows', r.name, f), initial, t);
+            }
+          }
+          if (this.trackedSessions.has(e.name)) {
+            let sums = [];
+            try { sums = fs.readdirSync(path.join(full, 'workflows')).filter(f => f.endsWith('.json')); } catch {}
+            for (const f of sums) this.readRunSummary(path.join(full, 'workflows', f), e.name);
+          }
         }
       }
     }
@@ -106,10 +143,18 @@ class TranscriptWatcher {
     let st;
     try { st = fs.statSync(p); } catch { return; }
     const recent = t - st.mtimeMs < RECENT_MS;
+    if (info.journal) {
+      // il giornale di un Workflow è piccolo: si legge tutto, se è recente o la sessione è già seguita
+      // (altrimenti ci si riprova al prossimo giro, quando il transcript principale è stato trovato)
+      if (!recent && !this.trackedSessions.has(info.sessionId) && !this.wantSessions.has(info.sessionId)) return;
+      this.files.set(p, { ...info, offset: 0, partial: '', ignored: false });
+      this.readNew(p, { replay: initial || !recent });
+      return;
+    }
     if (!recent && !this.wantSessions.has(info.sessionId)) {
       // sottoagente vecchio di una sessione che seguiamo: contiamo solo i suoi token
       if (info.agentId && this.trackedSessions.has(info.sessionId)) {
-        const rec = { ...info, ignored: true, offset: st.size, meta: info.metaPath ? normMeta(readJson(info.metaPath) || {}) : null };
+        const rec = { ...info, ignored: true, offset: st.size, meta: info.metaPath ? normMeta(readJson(info.metaPath) || {}, info.runId) : null };
         this.files.set(p, rec);
         this.accountPrefix(p, rec, st.size, true);
       }
@@ -122,13 +167,13 @@ class TranscriptWatcher {
       meta = readJson(info.metaPath);
       // sottoagente già concluso prima che aprissimo l'ufficio: ignoralo
       if (initial && meta && meta.finished) {
-        const rec = { ...info, ignored: true, offset: st.size, meta: normMeta(meta) };
+        const rec = { ...info, ignored: true, offset: st.size, meta: normMeta(meta, info.runId) };
         this.files.set(p, rec);
         this.accountPrefix(p, rec, st.size, true); // i suoi token contano comunque nel costo
         return;
       }
     }
-    const rec = { ...info, offset: 0, partial: '', meta: meta ? normMeta(meta) : null, ignored: false };
+    const rec = { ...info, offset: 0, partial: '', meta: meta || info.runId ? normMeta(meta || {}, info.runId) : null, ignored: false };
     this.files.set(p, rec);
     // primo caricamento: ricostruisce lo stato senza animazioni né log rumorosi
     const start = Math.max(0, st.size - TAIL_BYTES);
@@ -204,7 +249,8 @@ class TranscriptWatcher {
         let obj;
         try { obj = JSON.parse(l); } catch { continue; }
         const sid = obj.sessionId || rec.sessionId;
-        this.state.applyTranscriptLine(sid, rec.agentId, obj, { replay: !!opts.replay, meta: rec.meta });
+        if (rec.journal) this.state.applyWorkflowEvent(rec.sessionId, rec.runId, obj, { replay: !!opts.replay });
+        else this.state.applyTranscriptLine(sid, rec.agentId, obj, { replay: !!opts.replay, meta: rec.meta });
       }
     } catch { /* file in scrittura o rimosso */ } finally {
       if (fd !== undefined) try { fs.closeSync(fd); } catch {}
@@ -220,7 +266,7 @@ class TranscriptWatcher {
       if (!rec.metaPath || rec.ignored) continue;
       const m = readJson(rec.metaPath);
       if (!m) continue;
-      rec.meta = normMeta(m);
+      rec.meta = normMeta(m, rec.runId);
       // ripreso dopo la fine: un "finished" scritto prima della ripresa non vale più
       if (rec.wokeMeta !== undefined && rec.meta.finished) { try { if (fs.statSync(rec.metaPath).mtimeMs === rec.wokeMeta) rec.meta.finished = false; } catch {} }
       const s = this.state.sessions.get(rec.sessionId);
@@ -229,7 +275,7 @@ class TranscriptWatcher {
   }
 }
 
-function normMeta(m) {
+function normMeta(m, runId) {
   return {
     agentType: m.agentType,
     description: m.description,
@@ -238,6 +284,7 @@ function normMeta(m) {
     parentAgentId: m.parentAgentId,
     teamName: m.teamName,
     workflowPhase: m.workflowPhase,
+    workflowRunId: runId || undefined,
     name: m.name,
     background: m.requestShape ? m.requestShape !== 'foreground' : undefined,
   };

@@ -239,8 +239,70 @@ function planBoardTests(ok) {
   st.stop && st.stop();
 }
 
+// Workflow: gli agenti stanno in subagents/workflows/<runId>/, con il giornale; il riepilogo in workflows/<runId>.json
+// (struttura come quella di Claude Code, contenuti inventati)
+function workflowTests(ok) {
+  const { OfficeState } = require(path.join(ROOT, 'src', 'core', 'state'));
+  const { TranscriptWatcher } = require(path.join(ROOT, 'src', 'core', 'sources'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'platypus-test-'));
+  const st = new OfficeState({});
+  const w = new TranscriptWatcher(st, { base: tmp });
+  try {
+    const S = 'aaaa1111-0000-4000-8000-00000000wf01', RUN = 'wf_test_0001';
+    const sdir = path.join(tmp, 'projects', 'proj', S), rdir = path.join(sdir, 'subagents', 'workflows', RUN);
+    fs.mkdirSync(rdir, { recursive: true });
+    const now = Date.now();
+    let k = 0;
+    const L = (o, t) => JSON.stringify({ timestamp: iso(now - 60000 + t * 1000), sessionId: S, cwd: '/p', ...o }) + '\n';
+    const asst = (t, content, agentId) => L({ type: 'assistant', ...(agentId ? { agentId, isSidechain: true } : {}), message: { id: 'm' + (++k), role: 'assistant', content, usage: { input_tokens: 1000, output_tokens: 100 } } }, t);
+    const res = (t, id, content, extra = {}) => L({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content }] }, ...extra }, t);
+    fs.writeFileSync(path.join(sdir + '.jsonl'),
+      L({ type: 'user', message: { role: 'user', content: 'Rivedi il modulo ordini' } }, 0) +
+      asst(1, [{ type: 'tool_use', id: 'wf1', name: 'Workflow', input: { script: '…', description: 'Revisione del modulo ordini' } }]) +
+      res(2, 'wf1', 'Workflow launched', { toolUseResult: { status: 'async_launched', taskId: 'task-1', taskType: 'workflow', workflowName: 'review-orders', runId: RUN, transcriptDir: rdir } }) +
+      asst(30, [{ type: 'tool_use', id: 'sm1', name: 'SendMessage', input: { to: 'reviewer', summary: 'Controlla anche i resi', message: '…' } }]) +
+      res(31, 'sm1', 'ok', { toolUseResult: { success: true, resumedAgentId: 'a2' } }));
+    const agents = [['a1', 'review:bugs', 'Review'], ['a2', 'review:perf', 'Review'], ['a3', 'verify:bugs', 'Verify']];
+    fs.writeFileSync(path.join(rdir, 'journal.jsonl'), JSON.stringify({ type: 'launched' }) + '\n' +
+      agents.map(([id, label, phase]) => JSON.stringify({ type: 'started', agentId: id, key: label, label, phase })).join('\n') + '\n' +
+      JSON.stringify({ type: 'result', agentId: 'a1', key: 'review:bugs', result: {} }) + '\n' + JSON.stringify({ type: 'failed', agentId: 'a2', key: 'review:perf' }) + '\n');
+    agents.forEach(([id, , phase], i) => {
+      fs.writeFileSync(path.join(rdir, `agent-${id}.jsonl`), L({ type: 'user', agentId: id, isSidechain: true, message: { role: 'user', content: 'Rivedi' } }, 3 + i) + asst(5 + i * 3, [{ type: 'text', text: 'Fatto.' }], id));
+      fs.writeFileSync(path.join(rdir, `agent-${id}.meta.json`), JSON.stringify({ agentType: 'general-purpose', spawnDepth: 1, description: id, workflowPhase: phase }));
+    });
+    w.scan(true); w.scan(false);
+    const s = st.sessions.get(S);
+    const a3 = s && s.subs.get('a3');
+    ok(a3 && a3.name === 'verify:bugs' && a3.phase === 'Verify' && a3.workflow === RUN, 'agente di un Workflow in ufficio, con etichetta e fase del giornale');
+    let snap = st.sessionSnapshot(s).workflows.find(x => x.id === RUN);
+    const rev = snap && snap.phases.find(p => p.title === 'Review');
+    ok(snap && snap.name === 'review-orders' && snap.description === 'Revisione del modulo ordini' && snap.status === 'running', `esecuzione dal transcript principale: ${snap && snap.name}, ${snap && snap.status}`);
+    ok(rev && rev.total === 2 && rev.done === 1 && rev.failed === 1 && rev.cost > 0, `fase Review: 2 agenti, 1 fatto, 1 fallito, costo ${rev && rev.cost.toFixed(4)}`);
+    ok(snap.cost > 0 && st.costOf(s) >= snap.cost, 'i token degli agenti del Workflow entrano nel costo della sessione');
+    // il riepilogo finale: nome, stato, fasi nell'ordine dello script (anche quelle senza agenti)
+    fs.mkdirSync(path.join(sdir, 'workflows'), { recursive: true });
+    fs.writeFileSync(path.join(sdir, 'workflows', RUN + '.json'), JSON.stringify({ runId: RUN, workflowName: 'review-orders', status: 'completed', startTime: now - 59000, durationMs: 40000,
+      phases: [{ title: 'Review', detail: 'trova i difetti' }, { title: 'Verify' }, { title: 'Report' }], agentCount: 3, totalTokens: 3300, totalToolCalls: 12, summary: 'Tre agenti, un difetto confermato' }));
+    w.scan(false);
+    snap = st.sessionSnapshot(s).workflows.find(x => x.id === RUN);
+    ok(snap.status === 'completed' && snap.durationMs === 40000 && snap.phases.map(p => p.title).join('|') === 'Review|Verify|Report' && snap.phases[0].detail === 'trova i difetti', 'riepilogo letto: stato, durata, fasi nell\'ordine dello script');
+    ok(snap.agents.find(a => a.id === 'a3').state === 'stopped', 'a esecuzione chiusa, un agente senza esito risulta fermato');
+    const m = st.sessionSnapshot(s).messages[0];
+    ok(m && m.to === 'reviewer' && m.toId === 'a2' && m.summary === 'Controlla anche i resi', 'SendMessage: chi scrive a chi, con l\'agente ripreso');
+    // dall'archivio (replay): la stessa esecuzione, con etichette, esiti e riepilogo
+    const { Replay } = require(path.join(ROOT, 'src', 'core', 'archive'));
+    const rp = new Replay({ file: sdir + '.jsonl', base: tmp, settings: {} });
+    rp.control('pause'); rp.seek(1);
+    const fr = rp.frame(), rs = fr.session && fr.session.workflows.find(x => x.id === RUN);
+    const ok3 = rs && rs.agents.find(a => a.id === 'a3');
+    rp.stop();
+    ok(rs && rs.status === 'completed' && rs.name === 'review-orders' && rs.phases.find(p => p.title === 'Review').failed === 1 && ok3 && ok3.label === 'verify:bugs', 'replay dall\'archivio: esecuzione, fasi ed esiti ricostruiti');
+  } finally { w.stop(); st.stop && st.stop(); fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
 function run(ok) {
   console.log('motore: casi del giro di debug');
+  workflowTests(ok);
   planBoardTests(ok);
   nodeVersionTests(ok);
   dataDirTests(ok);

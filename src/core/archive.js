@@ -55,9 +55,11 @@ function summarize(p, st) {
   const id = path.basename(p, '.jsonl');
   let subagents = 0;
   try { subagents = fs.readdirSync(path.join(path.dirname(p), id, 'subagents')).filter(f => f.endsWith('.jsonl')).length; } catch {}
+  let workflows = 0, wfAgents = 0; // esecuzioni di Workflow e i loro agenti
+  try { for (const r of fs.readdirSync(path.join(path.dirname(p), id, 'subagents', 'workflows'), { withFileTypes: true })) { if (!r.isDirectory()) continue; workflows++; try { wfAgents += fs.readdirSync(path.join(path.dirname(p), id, 'subagents', 'workflows', r.name)).filter(f => /^agent-.+\.jsonl$/.test(f)).length; } catch {} } } catch {}
   return {
     id, key: path.basename(path.dirname(p)) + '/' + id, path: p, cwd, project: cwd ? path.basename(cwd.replace(/\\/g, '/')) : path.basename(path.dirname(p)),
-    kind: kindOf(ep), title: title || prompt || '', start: start || st.mtimeMs, end: end || st.mtimeMs, size: st.size, subagents,
+    kind: kindOf(ep), title: title || prompt || '', start: start || st.mtimeMs, end: end || st.mtimeMs, size: st.size, subagents: subagents + wfAgents, workflows,
   };
 }
 
@@ -133,8 +135,50 @@ function loadEvents(file) {
     const meta = m ? { agentType: m.agentType, description: m.description, toolUseId: m.toolUseId, parentAgentId: m.parentAgentId, teamName: m.teamName, workflowPhase: m.workflowPhase, name: m.name, background: m.requestShape ? m.requestShape !== 'foreground' : undefined } : null;
     try { push(parseLines(fs.readFileSync(path.join(sdir, f), 'utf8')), agentId, meta); } catch {}
   }
+  // gli agenti dei Workflow: etichetta e fase dal giornale, esito all'ultima riga dell'agente, riepilogo alla fine
+  let runs = [];
+  try { runs = fs.readdirSync(path.join(sdir, 'workflows'), { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name); } catch {}
+  for (const runId of runs) {
+    const rdir = path.join(sdir, 'workflows', runId);
+    const started = new Map(), outcome = new Map();
+    let journal = [];
+    try { journal = parseLines(fs.readFileSync(path.join(rdir, 'journal.jsonl'), 'utf8')); } catch {}
+    for (const ev of journal) {
+      if (ev && ev.type === 'started' && ev.agentId) started.set(String(ev.agentId), ev);
+      if (ev && (ev.type === 'result' || ev.type === 'failed') && ev.agentId) outcome.set(String(ev.agentId), ev.type);
+    }
+    let files = [];
+    try { files = fs.readdirSync(rdir).filter(f => /^agent-.+\.jsonl$/.test(f)); } catch {}
+    for (const f of files) {
+      const agentId = f.slice(6, -6);
+      let m = null;
+      try { m = JSON.parse(fs.readFileSync(path.join(rdir, f.slice(0, -6) + '.meta.json'), 'utf8')); } catch {}
+      const ev = started.get(agentId) || {};
+      const meta = { agentType: m && m.agentType, description: m && m.description, workflowPhase: ev.phase || (m && m.workflowPhase), workflowRunId: runId, name: ev.label || undefined };
+      const before = events.length;
+      try { push(parseLines(fs.readFileSync(path.join(rdir, f), 'utf8')), agentId, meta); } catch {}
+      const last = events.length > before ? events[events.length - 1].ts : 0;
+      if (ev.agentId && last) events.push({ ts: events[before].ts, agentId: null, workflow: { runId, event: { type: 'started', agentId, key: ev.key, label: ev.label, phase: ev.phase } }, seq: events.length });
+      if (outcome.has(agentId) && last) events.push({ ts: last, agentId: null, workflow: { runId, event: { type: outcome.get(agentId), agentId } }, seq: events.length });
+    }
+    const sum = (() => { try { return JSON.parse(fs.readFileSync(path.join(path.dirname(file), id, 'workflows', runId + '.json'), 'utf8')); } catch { return null; } })();
+    if (sum) {
+      const end = (Number(sum.startTime) || 0) + (Number(sum.durationMs) || 0) || (events.length ? Math.max(...events.map(e => e.ts)) : 0);
+      if (end) events.push({ ts: end, agentId: null, workflow: { runId, summary: sum }, seq: events.length });
+    }
+  }
   events.sort((a, b) => a.ts - b.ts || a.seq - b.seq);
   return { id, events };
+}
+
+// un evento di loadEvents nello stato: una riga di transcript o un fatto di un Workflow (giornale, riepilogo)
+function applyEvent(state, id, e) {
+  if (e.workflow) {
+    if (e.workflow.summary) state.applyWorkflowSummary(id, e.workflow.runId, e.workflow.summary);
+    else state.applyWorkflowEvent(id, e.workflow.runId, e.workflow.event);
+    return;
+  }
+  state.applyTranscriptLine(id, e.agentId, e.line, { meta: e.meta ? { ...e.meta } : null });
 }
 
 class Replay extends EventEmitter {
@@ -167,7 +211,7 @@ class Replay extends EventEmitter {
   feedUntil(t) {
     while (this.idx < this.events.length && this.events[this.idx].ts <= t) {
       const e = this.events[this.idx++];
-      this.state.applyTranscriptLine(this.id, e.agentId, e.line, { meta: e.meta ? { ...e.meta } : null });
+      applyEvent(this.state, this.id, e);
     }
   }
 
@@ -221,4 +265,4 @@ class Replay extends EventEmitter {
   stop() { clearInterval(this.timer); this.state.stop(); this.removeAllListeners(); }
 }
 
-module.exports = { listArchive, findSessionFile, loadEvents, Replay };
+module.exports = { listArchive, findSessionFile, loadEvents, applyEvent, Replay };

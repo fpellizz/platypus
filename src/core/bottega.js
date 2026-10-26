@@ -219,7 +219,7 @@ class Bottega {
   learnFromArchive(cwd, { base, settings, liveIds = new Set(), chunk = 1500 } = {}) {
     const b = this.book(cwd);
     if (b.job && b.job.running) return b.job;
-    const { listArchive, findSessionFile, loadEvents } = require('./archive');
+    const { listArchive, findSessionFile, loadEvents, applyEvent } = require('./archive');
     const { OfficeState, displayName } = require('./state');
     const todo = listArchive({ base, limit: 400, liveIds }).filter(x => x.cwd && projectKey(x.cwd) === b.key && !x.live && (b.learned || {})[x.id] !== x.end);
     const job = b.job = { running: true, total: todo.length, done: 0, cases: 0, error: '' };
@@ -238,7 +238,7 @@ class Bottega {
             for (const end = Math.min(events.length, i + chunk); i < end; i++) {
               const e = events[i];
               vt = e.ts;
-              st.applyTranscriptLine(id, e.agentId, e.line, { meta: e.meta ? { ...e.meta } : null });
+              applyEvent(st, id, e);
             }
             if (i < events.length) return setImmediate(feed);
             const s = st.sessions.get(id);

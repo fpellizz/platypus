@@ -168,5 +168,8 @@
   "Errore: {msg}": "Error: {msg}",
   "Platypus in ascolto su {url}  (Ctrl+C per uscire)": "Platypus listening on {url}  (Ctrl+C to quit)",
   "La porta è già occupata: forse Platypus è già aperto?": "The port is already in use: is Platypus already open?",
-  "Piano di lavoro": "Plan"
+  "Piano di lavoro": "Plan",
+  "Scrive a {who}": "Writes to {who}",
+  "Lancia il workflow «{what}»": "Launches the workflow “{what}”",
+  "Lancia un workflow": "Launches a workflow"
 }
