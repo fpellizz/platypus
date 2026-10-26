@@ -1058,6 +1058,15 @@ function layoutFloor(s) {
   const maxRight = W - 10;
   let x = LM, y = officeBottom + 26, lineH = 0, line = 0;
   const lineYs = [y];
+  // sala creativa con le due lavagne: per prima, subito sotto l'ufficio del capo, così la lista e il piano
+  // si vedono senza scorrere anche sui piani con tante sale
+  const CW = 2 * BOARD_W + 3 * 14, CH = 18 + BOARD_H + 34;
+  const creative = { x, y, w: CW, h: CH, line, doorX: x + 21, key: 'creative', color: C.yellow, g: { kind: 'creative', members: [], key: 'creative' } };
+  creative.boards = ['A', 'B'].map((k, i) => {
+    const bx = x + 14 + i * (BOARD_W + 14), by = y + 22;
+    return { key: k, x: bx, y: by, w: BOARD_W, h: BOARD_H, spot: { x: bx + 18, y: by + BOARD_H + 18 } };
+  });
+  x += CW + 18; lineH = CH;
   for (const g of groups) {
     const seats = assignSeats(s.id, g);
     const cap = seats.length;
@@ -1075,15 +1084,6 @@ function layoutFloor(s) {
     x += w + 18;
     lineH = Math.max(lineH, h);
   }
-  // sala creativa con le due lavagne
-  const CW = 2 * BOARD_W + 3 * 14, CH = 18 + BOARD_H + 34;
-  if (x > LM && x + CW > maxRight) { y += lineH + 24; x = LM; lineH = 0; line++; lineYs.push(y); }
-  const creative = { x, y, w: CW, h: CH, line, doorX: x + 21, key: 'creative', color: C.yellow, g: { kind: 'creative', members: [], key: 'creative' } };
-  creative.boards = ['A', 'B'].map((k, i) => {
-    const bx = x + 14 + i * (BOARD_W + 14), by = y + 22;
-    return { key: k, x: bx, y: by, w: BOARD_W, h: BOARD_H, spot: { x: bx + 18, y: by + BOARD_H + 18 } };
-  });
-  lineH = Math.max(lineH, CH);
   const contentH = y + lineH + 20;
   scale = baseScale();
   applySize(contentH);
@@ -1672,6 +1672,8 @@ function updateBoardLabels() {
       html = `<span class="sig">${tr('di {name}', { name: esc(ct.author) })}</span>`;
     } else if (!ct && g.key === 'A') {
       html = '<span class="more">' + tr('La lista di Claude comparirà qui') + '</span>';
+    } else if (!ct && g.key === 'B') {
+      html = '<span class="more">' + tr('Il piano di Claude comparirà qui (modalità piano)') + '</span>';
     }
     if (b.down) html = '';
     setHtml(el, html);
