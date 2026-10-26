@@ -69,7 +69,9 @@ function describeTool(name, input) {
     case 'SubagentHandback':
       return tr('Consegna il resoconto');
     case 'SendMessage':
-      return tr('Scrive a un collega');
+      return input.to || input.recipient ? tr('Scrive a {who}', { who: clip(String(input.to || input.recipient), 24) }) : tr('Scrive a un collega');
+    case 'Workflow':
+      return input.description ? tr('Lancia il workflow «{what}»', { what: clip(input.description, 40) }) : tr('Lancia un workflow');
     case 'ToolSearch':
       return tr('Cerca uno strumento');
     default:

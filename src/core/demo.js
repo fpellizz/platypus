@@ -68,9 +68,81 @@ class Demo {
       for (const a of x.subs.values()) this.world.seed(x, a, a._demoStuck ? 10 : a._demoDrift ? 24 : 5 + Math.floor(Math.random() * 14), a._demoStuck ? 'npm run test:e2e' : null);
     }
     this.groundingScenario(this.ids.a, { explore: team[0], architect: arch, tester: team[2], plan: planId }, scale);
+    this.startWorkflows(this.ids.c);
+    this.demoMessage(this.ids.a, arch, tr('Usa i refresh token a rotazione'));
     this.seedBooks();
     this.timer = setInterval(() => this.step(), 900);
     this.state.touch();
+  }
+
+  // Workflow sul piano 3: uno finito un'ora fa (per l'analisi) e uno in corso, con le fasi che avanzano da sole
+  startWorkflows(sid) {
+    const st = this.state, s = st.sessions.get(sid);
+    if (!s) return;
+    const now = Date.now(), min = 60000, old = 'wf_demo_gap';
+    const phases = [[tr('Raccolta'), 4, 3], [tr('Confronto'), 4, 9], [tr('Sintesi'), 1, 4]]; // fase, agenti, minuti
+    let t = now - 70 * min;
+    phases.forEach(([phase, n, m], pi) => {
+      for (let i = 0; i < n; i++) {
+        const id = 'demo-wfo-' + pi + '-' + i, label = ['collect', 'compare', 'summary'][pi] + (n > 1 ? ':A.' + (5 + i * 3) : '');
+        st.applyWorkflowEvent(sid, old, { type: 'started', agentId: id, key: label, label, phase });
+        const ra = st.runAgent(s, old, id);
+        Object.assign(ra, { type: 'general-purpose', t0: t + i * 20000, w: 4e5 + Math.random() * 6e5 });
+        ra.t1 = ra.t0 + m * min * (0.6 + Math.random() * 0.4); ra.tokens = Math.round(ra.w / 2);
+        st.applyWorkflowEvent(sid, old, { type: pi === 1 && i === 2 ? 'failed' : 'result', agentId: id });
+      }
+      t += m * min;
+    });
+    st.ensureRun(s, old).description = tr("Confronto delle policy con l'Annex A");
+    st.applyWorkflowSummary(sid, old, { workflowName: 'gap-analysis', status: 'completed', startTime: now - 70 * min, durationMs: 16 * min, phases: phases.map(([title]) => ({ title })),
+      agentCount: 9, totalTokens: 1900000, totalToolCalls: 214, summary: tr("9 agenti, 14 scostamenti dall'Annex A, 3 critici") });
+    this.runWorkflow(sid);
+  }
+  runWorkflow(sid) {
+    const st = this.state, s = st.sessions.get(sid);
+    if (!s) return;
+    const run = 'wf_demo_' + (++this.n);
+    const phases = [[tr('Lettura'), ['read:A.5', 'read:A.8', 'read:A.12']], [tr('Revisione'), ['review:A.5', 'review:A.8', 'review:A.12', 'review:A.17']], [tr('Verifica'), ['verify:A.5', 'verify:A.12']], [tr('Report'), ['report']]];
+    const r = st.ensureRun(s, run);
+    Object.assign(r, { name: 'policy-review', description: tr('Revisione delle policy ISO 27001'), startedAt: Date.now(), phases: phases.map(([title]) => ({ title, detail: '' })) });
+    this.wf = { sid, run, phases, phase: 0, doneAt: 0 };
+    this.workflowPhase();
+  }
+  workflowPhase() {
+    const { sid, run, phases, phase } = this.wf;
+    const [title, labels] = phases[phase];
+    const s = this.state.sessions.get(sid);
+    for (const label of labels) {
+      const id = this.spawn(sid, 'general-purpose', label, undefined, { quiet: true, meta: { workflowRunId: run, workflowPhase: title } });
+      this.state.applyWorkflowEvent(sid, run, { type: 'started', agentId: id, key: label, label, phase: title });
+      const a = s && s.subs.get(id);
+      if (a) a._demoWf = true;
+      if (s) { const ra = this.state.runAgent(s, run, id); ra.t0 = ra.t1 = Date.now(); } // gli agenti finti non scrivono righe con l'orario
+    }
+  }
+  // a ogni passo: qualche agente della fase finisce (uno ogni tanto fallisce); poi si passa alla fase dopo
+  workflowStep() {
+    const w = this.wf;
+    if (!w) return;
+    const st = this.state, s = st.sessions.get(w.sid);
+    if (!s) return;
+    if (w.doneAt) { if (Date.now() - w.doneAt > 45000) this.runWorkflow(w.sid); return; }
+    const live = [...s.subs.values()].filter(a => a.workflow === w.run && !a.finished);
+    for (const a of live) st.runAgent(s, w.run, a.id).t1 = Date.now();
+    for (const a of live) if (Math.random() < 0.05) st.applyWorkflowEvent(w.sid, w.run, { type: w.phase === 1 && Math.random() < 0.2 ? 'failed' : 'result', agentId: a.id });
+    if ([...s.subs.values()].some(a => a.workflow === w.run && !a.finished)) return;
+    if (w.phase < w.phases.length - 1) { w.phase++; this.workflowPhase(); return; }
+    const r = st.ensureRun(s, w.run);
+    st.applyWorkflowSummary(w.sid, w.run, { status: 'completed', durationMs: Date.now() - r.startedAt, startTime: r.startedAt, agentCount: r.agents.size, summary: tr('Policy riviste: 2 punti da sistemare') });
+    w.doneAt = Date.now();
+  }
+  // un messaggio tra agenti (SendMessage), come quelli che il capo manda a chi sta lavorando
+  demoMessage(sid, toId, text) {
+    const st = this.state, s = st.sessions.get(sid), to = s && s.subs.get(toId);
+    if (!to) return;
+    const id = 'demo-msg-' + (++this.n);
+    st.trackTeam(s, s.main, 'SendMessage', { to: to.type, summary: text }, Date.now(), id);
+    st.teamResult(s, 'SendMessage', id, { success: true, resumedAgentId: toId }, Date.now());
   }
 
   // il Libro della bottega dei progetti della demo: lezioni finte degli ultimi giorni, coerenti con gli scenari
@@ -150,6 +222,7 @@ class Demo {
     clearInterval(this.timer);
     this.timer = null;
     this.world.stop();
+    this.wf = null;
     if (this.bottega) this.bottega.dropDemo();
     this.state.demo = false;
     this.state.removeDemo();
@@ -181,12 +254,13 @@ class Demo {
     return id;
   }
 
-  spawn(sid, type, desc, parent) {
+  // extra.meta: campi in più per il sottoagente (es. il Workflow); extra.quiet: senza la chiamata Agent del capo
+  spawn(sid, type, desc, parent, extra = {}) {
     const s = this.state.sessions.get(sid);
     if (!s) return null;
     const aid = 'demo-sub-' + (++this.n);
-    this.hook(sid, 'PreToolUse', { agent_id: parent || undefined, tool_name: 'Agent', tool_input: { subagent_type: type, description: desc } });
-    this.state.ensureSub(s, aid, { agentType: type, description: desc, parentAgentId: parent || undefined, background: type === 'reviewer' || type === 'spec-checker' });
+    if (!extra.quiet) this.hook(sid, 'PreToolUse', { agent_id: parent || undefined, tool_name: 'Agent', tool_input: { subagent_type: type, description: desc } });
+    this.state.ensureSub(s, aid, { agentType: type, description: desc, parentAgentId: parent || undefined, background: type === 'reviewer' || type === 'spec-checker', ...(extra.meta || {}) });
     const a = s.subs.get(aid);
     if (a) this.state.mindOf(s, a).setGoal(Date.now() - 16 * 60000, desc); // il suo compito: la stella polare
     if (a) { // modelli ed effort finti: età e costumi diversi in ufficio
@@ -234,6 +308,11 @@ class Demo {
       for (const a of subs) {
         if (a._demoStuck || a._demoHold > Date.now()) continue;
         const q = Math.random();
+        if (a._demoWf) { // agenti del Workflow: lavorano, ma finiscono solo quando lo dice il giornale (workflowStep)
+          if (q < 0.5) this.state.addTokens(s, a, { input_tokens: 40, output_tokens: 300 + Math.random() * 600, cache_read_input_tokens: 20000, cache_creation_input_tokens: 800 }, null);
+          else if (q < 0.8) this.world.act(s, a, (name, extra) => this.hook(s.id, name, extra));
+          continue;
+        }
         // token: ogni agente consuma un po' a ogni passo
         if (q < 0.5) this.state.addTokens(s, a, { input_tokens: 40, output_tokens: 300 + Math.random() * 600, cache_read_input_tokens: 20000 + Math.random() * 30000, cache_creation_input_tokens: Math.random() * 3000 }, null);
         if (q > 0.996 && a.type !== 'reviewer') { for (let k = 0; k < 3; k++) this.hook(s.id, 'PostToolUseFailure', { agent_id: a.id, agent_type: a.type, tool_name: 'Bash' }); }
@@ -245,6 +324,8 @@ class Demo {
         else if (q < 0.55) this.hook(s.id, 'PostToolUse', { agent_id: a.id, agent_type: a.type });
         else if (q < 0.6 && a.status === 'waiting') this.hook(s.id, 'PostToolUse', { agent_id: a.id, agent_type: a.type });
       }
+      if (s.id === this.ids.c) this.workflowStep();
+      if (s.id === this.ids.a && Math.random() < 0.004) { const arch = subs.find(a => a.type === 'architect'); if (arch) this.demoMessage(s.id, arch.id, pick([tr('Controlla anche il logout'), tr('Le sessioni vanno in Redis'), tr('Aspetta i test prima della PR')])); }
       // rilasci finti: commit, PR, test verdi
       if (Math.random() < 0.008) {
         const evs = [

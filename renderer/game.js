@@ -134,8 +134,15 @@ function toast(msg, ok = true) {
   el.textContent = msg; el.className = ok ? 'ok' : 'ko'; el.hidden = false;
   clearTimeout(toast._t); toast._t = setTimeout(() => { el.hidden = true; }, 3500);
 }
+// SQUADRE: workflow, squadre e messaggi tra agenti della sessione (solo se ce ne sono)
+function teamsButton(s) {
+  const ti = window.teamsInfo ? teamsInfo(s) : null;
+  if (!ti || !ti.any) return '';
+  return '<button data-do="teams" title="' + esc(tr('Workflow, squadre e messaggi tra agenti (W)')) + '">' + tr('SQUADRE') + (ti.workflows ? ' · ' + ti.workflows : '') + '</button>';
+}
 async function sessionAction(what, sid) {
   if (what === 'book') return window.openBottega && openBottega(sid);
+  if (what === 'teams') return window.openTeams && openTeams(sid);
   if (what === 'focus') {
     const r = await api('/api/focus', { sid });
     toast(r.ok ? (r.approx ? tr('Ho portato in primo piano {app} (non sono sicuro della finestra esatta)', { app: r.app || tr('l\'app') }) : tr('Finestra in primo piano: {app}', { app: r.app || '' })) : (r.reason || tr('Non trovata')), r.ok);
@@ -324,7 +331,7 @@ async function refreshArchive(force) {
 function dur(ms) { const m = Math.round(ms / 60000); return m < 60 ? tr('{m} min', { m }) : tr('{h} h {mm}', { h: Math.floor(m / 60), mm: p2(m % 60) }); }
 function renderArchive() {
   const list = Array.isArray(archiveData) ? archiveData : [];
-  const sig = JSON.stringify(list.map(x => [x.key, x.end, x.live, x.title]));
+  const sig = JSON.stringify(list.map(x => [x.key, x.end, x.live, x.title, x.workflows]));
   if (sig === archiveSig) return;
   archiveSig = sig;
   const el = $('#archive');
@@ -336,7 +343,7 @@ function renderArchive() {
       return `<tr data-key="${esc(x.key)}"><td class="when">${esc(new Date(x.start).toLocaleString(LOCALE, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</td>` +
         `<td class="num">${dur(x.end - x.start)}</td>` +
         `<td class="proj">${esc(name)}${x.live ? ' <b class="live">' + tr('IN CORSO') + '</b>' : ''}<small>${esc(kind === 'cowork' ? x.project : x.title)}</small></td>` +
-        `<td><span class="kind" style="color:${KIND_COLOR[kind]}">${KIND_LABEL[kind]}</span></td><td class="num">${p2(x.subagents)}</td>` +
+        `<td><span class="kind" style="color:${KIND_COLOR[kind]}">${KIND_LABEL[kind]}</span></td><td class="num">${p2(x.subagents)}${x.workflows ? ` <b class="wfn" title="${esc(trn('{n} workflow: i suoi agenti sono contati qui; nel replay si vedono con SQUADRE (W)', '{n} workflow: i loro agenti sono contati qui; nel replay si vedono con SQUADRE (W)', x.workflows))}">${esc(tr('{n} WF', { n: x.workflows }))}</b>` : ''}</td>` +
         `<td class="acts"><button data-do="replay">${tr('REPLAY')}</button>` +
         (kind !== 'cowork' && !x.live ? `<button data-do="resume" title="${esc(tr('Apre un terminale con claude --resume'))}">${tr('RIPRENDI')}</button>` : '') +
         `<button data-do="folder">${tr('CARTELLA')}</button></td></tr>`;
@@ -437,6 +444,13 @@ function layoutLobby() {
   receptionist.y = H - 26;
 }
 
+// nel tabellone: quanti workflow sono in corso sul piano (il dettaglio è nel pannello SQUADRE)
+function wfChip(s) {
+  const live = (s.workflows || []).filter(r => r.status === 'running');
+  if (!live.length) return '';
+  const phase = r => { const p = r.phases.find(x => x.running) || r.phases.find(x => x.total && x.done + x.failed < x.total); return p ? p.title : ''; };
+  return ` <b class="wfn" title="${esc(live.map(r => r.name + (phase(r) ? ' · ' + phase(r) : '')).join(' / '))}">${esc(tr('{n} WF', { n: live.length }))}</b>`;
+}
 let boardSig = '';
 function updateBoard() {
   const list = sessions();
@@ -447,7 +461,7 @@ function updateBoard() {
     return { s, i, c, col, kind };
   });
   if (boardTab !== 'sessions') return renderBoardTab();
-  const sig = JSON.stringify(rows.map(r => [r.s.id, r.s.project, r.s.title, r.kind, r.c, r.s.main.action, r.s.ended, r.s.history, Math.round((r.s.cost || 0) * 100), alertsOf(r.s).map(a => a.text)]));
+  const sig = JSON.stringify(rows.map(r => [r.s.id, r.s.project, r.s.title, r.kind, r.c, r.s.main.action, r.s.ended, r.s.history, Math.round((r.s.cost || 0) * 100), alertsOf(r.s).map(a => a.text), wfChip(r.s)]));
   if (sig === boardSig) return;
   boardSig = sig;
   const tot = rows.reduce((t, r) => ({ a: t.a + r.c.agents, b: t.b + r.c.busy, w: t.w + r.c.wait, d: t.d + r.c.done }), { a: 0, b: 0, w: 0, d: 0 });
@@ -458,7 +472,7 @@ function updateBoard() {
           ? `<tr class="sec"><td colspan="11">${r.s.wing === 'cowork' ? 'COWORK' : 'CLAUDE CODE'}</td></tr>` : '') +
         `<tr data-sid="${esc(r.s.id)}" class="${r.c.wait ? 'wait' : ''}">` +
         `<td class="fl" style="background:${r.col}">${r.i + 1}</td>` +
-        `<td class="proj">${esc(projName(r.s))}${r.s.demo ? ' [DEMO]' : ''}<small>${esc(r.s.wing === 'cowork' ? r.s.project : (r.s.title || ''))}</small></td>` +
+        `<td class="proj">${esc(projName(r.s))}${r.s.demo ? ' [DEMO]' : ''}${wfChip(r.s)}<small>${esc(r.s.wing === 'cowork' ? r.s.project : (r.s.title || ''))}</small></td>` +
         `<td><span class="kind" style="color:${KIND_COLOR[r.kind]}">${KIND_LABEL[r.kind]}</span></td>` +
         `<td class="num">${p2(r.c.agents)}</td><td class="num">${p2(r.c.busy)}</td>` +
         `<td class="num" style="color:${r.c.wait ? C.red : ''}">${p2(r.c.wait)}</td><td class="num">${p2(r.c.done)}</td>` +
@@ -963,6 +977,11 @@ function computeGroups(s) {
     const top = topOf(a);
     if (groups.has('mgr:' + a.id) && top === a) continue; // è il capo reparto
     if (top !== a && groups.has('mgr:' + top.id)) { groups.get('mgr:' + top.id).members.push(a); continue; }
+    if (a.workflow) { // gli agenti di un Workflow: una sala per esecuzione e fase
+      const run = (s.workflows || []).find(r => r.id === a.workflow), wname = (run && run.name) || tr('workflow');
+      ensure('grp:wf:' + a.workflow + ':' + (a.phase || ''), { kind: 'grp', manager: null, title: a.phase ? tr('WORKFLOW {name} · {phase}', { name: wname, phase: a.phase }) : tr('WORKFLOW {name}', { name: wname }), type: null }).members.push(a);
+      continue;
+    }
     const k = a.team ? 'team:' + a.team : 'type:' + a.type;
     ensure('grp:' + k, { kind: 'grp', manager: null, title: a.team ? tr('SQUADRA {name}', { name: a.team.toUpperCase() }) : tr('SALA {type}', { type: String(a.type).toUpperCase() }), type: a.team ? null : a.type }).members.push(a);
   }
@@ -1181,7 +1200,7 @@ function updateFloorLabels() {
       `<em>${tr('{n} token', { n: tokText((s.tokens || {}).total) })}</em></div>` +
       (alertsOf(s).length ? `<ul class="alerts">${alertsOf(s).slice(0, 4).map(a => `<li class="lv-${a.level}">${esc(a.text)}</li>`).join('')}</ul>` : '') +
       `<div class="t">${esc(s.cwd || '')}</div>` +
-      (!s._replay ? '<div class="btns">' + (!s.demo ? '<button data-do="focus" title="' + esc(tr('Porta in primo piano il terminale o la finestra di questa sessione')) + '">' + tr('FINESTRA') + '</button><button data-do="folder">' + tr('CARTELLA') + '</button>' : '') + '<button data-do="book" title="' + esc(tr('Le lezioni di questo progetto, dedotte dalle sessioni')) + '">' + tr('LIBRO') + '</button></div>' : ''));
+      (!s._replay ? '<div class="btns">' + (!s.demo ? '<button data-do="focus" title="' + esc(tr('Porta in primo piano il terminale o la finestra di questa sessione')) + '">' + tr('FINESTRA') + '</button><button data-do="folder">' + tr('CARTELLA') + '</button>' : '') + '<button data-do="book" title="' + esc(tr('Le lezioni di questo progetto, dedotte dalle sessioni')) + '">' + tr('LIBRO') + '</button>' + teamsButton(s) + '</div>' : '<div class="btns">' + teamsButton(s) + '</div>'));
     for (const btn of b.querySelectorAll('button[data-do]')) btn.onclick = () => sessionAction(btn.dataset.do, s.id);
     b.style.pointerEvents = 'auto';
     placeLabel(b, bx * scale, (WALL_H + 10) * scale, Math.min(320, avail) * scale);
@@ -3198,6 +3217,10 @@ window.addEventListener('keydown', e => {
   else if (k === '/' || k === 'k') { e.preventDefault(); toggleSearch(); }
   else if (k === 'm') toggleWidget();
   else if (k === 'o') toggleSettings();
+  else if (k === 'w') { // squadre: workflow, squadre e messaggi del piano
+    if (window.teamsOpen && teamsOpen()) closeTeams();
+    else { const s = viewSid === 'replay' ? (replayFrame && replayFrame.session) : sessionById(viewSid); if (s && window.openTeams) openTeams(s.id); }
+  }
   else if (k === 'g') { // mappa della realtà dell'agente selezionato (o del capo del piano)
     if (window.worldMapOpen && worldMapOpen()) closeWorldMap();
     else { const s = viewSid === 'replay' ? (replayFrame && replayFrame.session) : sessionById(viewSid); if (s) openWorldMap(s.id, focusId || 'main', viewSid === 'replay'); }
@@ -3211,7 +3234,7 @@ window.addEventListener('keydown', e => {
   else if (k === 'escape') {
     // dall'area relax si torna in atrio, se non c'è niente di aperto da chiudere
     if (viewSid === 'relax' && $('#help').hidden && $('#settings').hidden && $('#search').hidden && !(window.worldMapOpen && worldMapOpen())) goTo(null);
-    if (window.closeWorldMap) closeWorldMap(); if (window.closeBottega) closeBottega(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; { const sb = $('#settings'); if (!sb.hidden) { if (sb._tryClose) sb._tryClose(); else sb.hidden = true; } } roomListKey = null;
+    if (window.closeWorldMap) closeWorldMap(); if (window.closeBottega) closeBottega(); if (window.closeTeams) closeTeams(); hideInfo(); $('#help').hidden = true; $('#roomlist').hidden = true; { const sb = $('#settings'); if (!sb.hidden) { if (sb._tryClose) sb._tryClose(); else sb.hidden = true; } } roomListKey = null;
   }
 });
 window.addEventListener('resize', () => { if (snap) reconcile(); });

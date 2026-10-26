@@ -25,8 +25,8 @@ Node.js modules only, no npm packages: that's why browser mode starts without `n
 | File | Role |
 |---|---|
 | `index.js` | startup, HTTP server on 127.0.0.1 only, SSE, API, pending permissions |
-| `sources.js` | reading the transcripts (`projects/**/*.jsonl`) and the session registry, finding Cowork folders |
-| `state.js` | state of sessions, agents and subagents, costs, alerts, whiteboards, releases |
+| `sources.js` | reading the transcripts (`projects/**/*.jsonl`, including Workflow agents in `<session>/subagents/workflows/<runId>/` with their `journal.jsonl`, and run summaries in `<session>/workflows/<runId>.json`) and the session registry, finding Cowork folders |
+| `state.js` | state of sessions, agents and subagents, costs, alerts, whiteboards, releases, Workflow runs (phases, per-agent cost and times) and messages between agents |
 | `hooks.js` | installing and removing the hooks in `settings.json` |
 | `archive.js` | archive and replay with a virtual clock |
 | `osint.js` | system integration: bring window to front, resume session, open folder (Windows / macOS / Linux) |
@@ -67,7 +67,7 @@ The server rejects requests whose `Host` or `Origin` is not `127.0.0.1`/`localho
 
 ## Interface (`renderer/`)
 
-Static page: `index.html`, `style.css`, `game.js` (building, floors, balloons), `worldmap.js` (map of reality), `report.html`, `i18n-runtime.js`. It talks to the engine only over HTTP and SSE. The only point of contact with the shell is the optional `window.officeApp` object (if it's missing, you're in the browser).
+Static page: `index.html`, `style.css`, `game.js` (building, floors, balloons), `worldmap.js` (map of reality), `bottega.js` (Workshop book), `teams.js` (TEAMS panel: workflows, teams, messages), `report.html`, `i18n-runtime.js`. It talks to the engine only over HTTP and SSE. The only point of contact with the shell is the optional `window.officeApp` object (if it's missing, you're in the browser).
 
 ### The `window.officeApp` contract (from `src/preload.js`)
 

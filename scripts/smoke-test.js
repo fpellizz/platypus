@@ -89,6 +89,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const st = JSON.parse((await get(port, '/api/state')).body);
   ok(st.sessions.length >= 4, `demo: ${st.sessions.length} piani, ${st.sessions.reduce((a, s) => a + s.subs.length, 0)} sottoagenti`);
   const sid = st.sessions[0].id;
+  const wfs = st.sessions.flatMap(s => s.workflows || []);
+  const live = wfs.find(r => r.name === 'policy-review'), past = wfs.find(r => r.name === 'gap-analysis');
+  ok(live && live.status === 'running' && live.phases.length === 4 && past && past.status === 'completed' && past.phases.some(p => p.failed), `demo: workflow in corso (${live && live.phases.map(p => p.done + '/' + p.total).join(' ')}) e uno finito con un fallimento`);
+  ok(st.sessions.some(s => (s.messages || []).length), 'demo: un messaggio tra agenti (SendMessage)');
   for (const p of ['/', '/i18n.js', '/i18n-runtime.js', '/game.js', '/worldmap.js', '/bottega.js', '/report', '/api/settings', '/api/stats/costs', '/api/report']) {
     const r = await get(port, p);
     ok(r.status === 200, `GET ${p} → ${r.status}`);

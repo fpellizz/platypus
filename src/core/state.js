@@ -238,6 +238,9 @@ class OfficeState extends EventEmitter {
         taskSeq: 0,
         plan: null,              // {title, steps[], at}
         planDraft: null,         // {path, text}: il file del piano mentre Claude lo scrive
+        workflows: new Map(),    // runId -> esecuzione di un Workflow (vedi ensureRun)
+        workflowCalls: new Map(), // toolUseId dello strumento Workflow -> {description, t}
+        messages: [],            // SendMessage tra agenti: {t, from, to, toId, summary}
         releases: [],            // commit, push, PR, tag, test verdi
         party: null,             // ultima cosa da festeggiare
         testsRed: false,
@@ -313,6 +316,14 @@ class OfficeState extends EventEmitter {
     if (meta.name) a.name = meta.name;
     if (meta.teamName) a.team = meta.teamName;
     if (meta.workflowPhase) a.phase = String(meta.workflowPhase);
+    if (meta.workflowRunId) {
+      // agente di un Workflow: etichetta e fase vengono dal giornale dell'esecuzione
+      a.workflow = meta.workflowRunId;
+      const ra = this.runAgent(s, a.workflow, a.id);
+      if (ra.label && !a.name) a.name = ra.label;
+      if (ra.phase && !a.phase) a.phase = ra.phase;
+      if (!ra.type || ra.type === 'Sottoagente') ra.type = a.type;
+    }
     if (meta.parentAgentId && meta.parentAgentId !== a.id) a.parentId = meta.parentAgentId;
     if (meta.background != null) a.background = !!meta.background;
     if (meta.finished && !a.finished) this.finishSub(s, a, tr('Ha finito!'), !a._live);
@@ -369,6 +380,123 @@ class OfficeState extends EventEmitter {
     a.ctx = d.in + d.cr + d.cw; // quanto è pieno il contesto in questo momento
     if (a.kind) this.mindOf(s, a).noteCtx(ts || this.now(), a.ctx);
     if (a.kind === 'sub') s.wByType[a.type] = (s.wByType[a.type] || 0) + weight(d);
+    if (a.workflow && a.id) { const ra = this.runAgent(s, a.workflow, a.id); ra.w += weight(d); ra.tokens += d.in + d.out + d.cr + d.cw; }
+  }
+
+  // ---------- Workflow: esecuzioni, agenti, fasi ----------
+  // un'esecuzione nasce dal primo segno che ne arriva (strumento Workflow, giornale, agente o riepilogo)
+  ensureRun(s, runId) {
+    let r = s.workflows.get(runId);
+    if (!r) {
+      r = { id: runId, name: '', description: '', status: 'running', startedAt: 0, endedAt: 0, durationMs: 0, phases: [], agents: new Map(), agentCount: 0, totalTokens: 0, totalToolCalls: 0, summary: '', taskId: '' };
+      s.workflows.set(runId, r);
+      if (s.workflows.size > 40) s.workflows.delete(s.workflows.keys().next().value);
+    }
+    return r;
+  }
+  runAgent(s, runId, agentId) {
+    const r = this.ensureRun(s, runId);
+    let ra = r.agents.get(agentId);
+    if (!ra) { ra = { id: agentId, key: '', label: '', phase: '', state: 'running', type: '', t0: 0, t1: 0, w: 0, tokens: 0 }; r.agents.set(agentId, ra); }
+    return ra;
+  }
+  // una riga del giornale: launched | started {agentId, key, label, phase} | result {agentId, key} | failed {agentId, key}
+  applyWorkflowEvent(sessionId, runId, ev) {
+    if (!ev || typeof ev !== 'object' || !runId) return;
+    const s = this.ensureSession(sessionId, '', undefined);
+    const r = this.ensureRun(s, runId);
+    if (ev.type === 'launched') { if (!r.startedAt) r.startedAt = this.now(); }
+    else if (ev.agentId && (ev.type === 'started' || ev.type === 'result' || ev.type === 'failed')) {
+      const ra = this.runAgent(s, runId, String(ev.agentId));
+      if (ev.key) ra.key = String(ev.key).slice(0, 80);
+      if (ev.type === 'started') {
+        if (ev.label) ra.label = clip(String(ev.label), 40);
+        if (ev.phase) ra.phase = clip(String(ev.phase), 60);
+        const a = s.subs.get(ra.id);
+        if (a) { if (ra.label && !a.name) a.name = ra.label; if (ra.phase) a.phase = ra.phase; a.workflow = runId; }
+      } else {
+        ra.state = ev.type === 'result' ? 'done' : 'failed';
+        const a = s.subs.get(ra.id);
+        if (a && !a.finished) this.finishSub(s, a, ev.type === 'result' ? tr('Ha finito!') : tr('Si è fermato'), !a._live);
+      }
+    }
+    this.touch();
+  }
+  // lo strumento Workflow (chi lo lancia) e SendMessage (chi scrive a chi): servono alla vista delle squadre
+  trackTeam(s, a, tool, input, ts, toolUseId) {
+    if (tool === 'Workflow' && toolUseId) {
+      s.workflowCalls.set(toolUseId, { description: clip(String(input.description || ''), 80), t: ts });
+      if (s.workflowCalls.size > 40) s.workflowCalls.delete(s.workflowCalls.keys().next().value);
+    } else if (tool === 'SendMessage') {
+      const to = String(input.to || input.recipient || '').slice(0, 80);
+      if (!to) return;
+      s.messages.push({ t: ts, fromId: a.id, from: displayName(a), to, toId: '', toolUseId, summary: clip(String(input.summary || input.message || input.content || ''), 80) });
+      if (s.messages.length > 60) s.messages.splice(0, s.messages.length - 60);
+    }
+  }
+  teamResult(s, tool, toolUseId, r, ts) {
+    if (!r || typeof r !== 'object') return;
+    if (tool === 'Workflow' && r.runId) {
+      const run = this.ensureRun(s, String(r.runId));
+      const call = s.workflowCalls.get(toolUseId);
+      if (r.workflowName) run.name = clip(String(r.workflowName), 60);
+      if (call && call.description && !run.description) run.description = call.description;
+      if (r.taskId) run.taskId = String(r.taskId);
+      if (!run.startedAt) run.startedAt = (call && call.t) || ts;
+      this.touch();
+    } else if (tool === 'SendMessage') {
+      const m = s.messages.find(x => x.toolUseId === toolUseId);
+      if (m && r.resumedAgentId) m.toId = String(r.resumedAgentId);
+    }
+  }
+
+  // un'esecuzione per l'interfaccia: fasi nell'ordine dello script, con avanzamento, costo e tempi
+  workflowSnapshot(s, r) {
+    const rate = this.rateOf(s);
+    const final = /^(completed|done|success|failed|error|cancel+ed|killed|stopped)$/i.test(r.status);
+    const agents = [...r.agents.values()].map(ra => ({ id: ra.id, key: ra.key, label: ra.label, phase: ra.phase, type: ra.type, t0: ra.t0, t1: ra.t1, tokens: ra.tokens, cost: ra.w * rate,
+      state: ra.state === 'running' && final ? 'stopped' : ra.state }));
+    const order = r.phases.map(p => p.title);
+    for (const a of agents) if (a.phase && !order.includes(a.phase)) order.push(a.phase);
+    if (agents.some(a => !a.phase)) order.push('');
+    const phases = order.map(title => {
+      const l = agents.filter(a => (a.phase || '') === title);
+      const t0s = l.map(a => a.t0).filter(Boolean), t1s = l.map(a => a.t1).filter(Boolean);
+      return {
+        title, detail: (r.phases.find(p => p.title === title) || {}).detail || '',
+        total: l.length, done: l.filter(a => a.state === 'done').length, failed: l.filter(a => a.state === 'failed').length,
+        running: l.filter(a => a.state === 'running').length, stopped: l.filter(a => a.state === 'stopped').length,
+        cost: l.reduce((x, a) => x + a.cost, 0), tokens: l.reduce((x, a) => x + a.tokens, 0),
+        t0: t0s.length ? Math.min(...t0s) : 0, t1: t1s.length ? Math.max(...t1s) : 0,
+      };
+    }).filter(p => p.total || p.title);
+    const running = agents.some(a => a.state === 'running');
+    const firstT0 = agents.map(a => a.t0).filter(Boolean);
+    return {
+      id: r.id, name: r.name, description: r.description, taskId: r.taskId,
+      // senza riepilogo: finita se tutti i suoi agenti hanno un esito
+      status: final ? r.status : running || !agents.length ? 'running' : 'done',
+      startedAt: r.startedAt || (firstT0.length ? Math.min(...firstT0) : 0),
+      endedAt: r.endedAt, durationMs: r.durationMs,
+      agentCount: Math.max(r.agentCount, agents.length), totalTokens: r.totalTokens || agents.reduce((x, a) => x + a.tokens, 0), totalToolCalls: r.totalToolCalls,
+      cost: agents.reduce((x, a) => x + a.cost, 0), summary: r.summary, phases,
+      agents: agents.sort((x, y) => (x.t0 || 0) - (y.t0 || 0)).slice(-80),
+    };
+  }
+
+  // il riepilogo scritto da Claude Code alla fine: nome, stato, fasi, durata, totali
+  applyWorkflowSummary(sessionId, runId, o) {
+    const s = this.ensureSession(sessionId, '', undefined);
+    const r = this.ensureRun(s, runId);
+    if (o.workflowName) r.name = clip(String(o.workflowName), 60);
+    if (o.status) r.status = String(o.status);
+    if (Array.isArray(o.phases)) r.phases = o.phases.slice(0, 20).map(p => ({ title: clip(String((p && p.title) || ''), 60), detail: clip(String((p && p.detail) || ''), 120) })).filter(p => p.title);
+    if (Number(o.startTime)) r.startedAt = Number(o.startTime);
+    if (Number(o.durationMs)) { r.durationMs = Number(o.durationMs); r.endedAt = (r.startedAt || 0) + r.durationMs; }
+    for (const k of ['agentCount', 'totalTokens', 'totalToolCalls']) if (Number.isFinite(Number(o[k]))) r[k] = Number(o[k]);
+    if (o.summary) r.summary = clip(String(o.summary), 300);
+    if (o.taskId) r.taskId = String(o.taskId);
+    this.touch();
   }
 
   // lista delle cose da fare e piano del capo: finiscono sulle lavagne
@@ -487,7 +615,7 @@ class OfficeState extends EventEmitter {
     if (!detached && line.type !== 'assistant') return this.prefixLine(s, agentId, line, meta);
     if (line.type !== 'assistant' || !line.message) return;
     if (detached) {
-      const ghost = { kind: 'sub', type: (meta && meta.agentType) || 'Sottoagente', tok: emptyTok() };
+      const ghost = { id: agentId, kind: 'sub', type: (meta && meta.agentType) || 'Sottoagente', tok: emptyTok(), workflow: meta && meta.workflowRunId };
       return this.addTokens(s, ghost, line.message.usage, line.message.id || line.requestId);
     }
     const a = agentId ? this.ensureSub(s, agentId, meta, true, Date.parse(line.timestamp) || undefined) : s.main;
@@ -578,6 +706,7 @@ class OfficeState extends EventEmitter {
     if (live) this.announce(s);
     const a = agentId ? this.ensureSub(s, agentId, opts.meta, opts.replay, ts) : s.main;
     const msg = line.message || {};
+    if (a.workflow) { const ra = this.runAgent(s, a.workflow, a.id); ra.t0 = ra.t0 ? Math.min(ra.t0, ts) : ts; ra.t1 = Math.max(ra.t1 || 0, ts); }
     if (type === 'assistant') { this.addTokens(s, a, msg.usage, msg.id || line.requestId, ts); noteModel(a, line); }
     if (a.finished && a.byQuiet) this.resumeSub(a, ts);
     if (a.finished) return;
@@ -613,6 +742,7 @@ class OfficeState extends EventEmitter {
             s.spawns.set(b.id, { type: inp.subagent_type || 'general-purpose', description: inp.description || '', prompt: inp.prompt || '', parent: agentId });
           }
           if (!agentId) this.trackBoards(s, b.name, b.input || {}, ts, b.id);
+          this.trackTeam(s, a, b.name, b.input || {}, ts, b.id);
         }
       }
       if (msg.stop_reason === 'end_turn' && !agentId && a.status !== 'idle') {
@@ -642,6 +772,7 @@ class OfficeState extends EventEmitter {
               if (pend.name === 'TaskCreate' && !agentId) this.resolveTask(s, b.tool_use_id, b.content);
               // il piano approvato nel risultato (con le modifiche dell'utente), se Claude Code ce lo mette
               if (pend.name === 'ExitPlanMode' && !agentId && !b.is_error) { const ap = approvedPlan(b, line); if (ap) this.setPlan(s, ap, ts); }
+              if ((pend.name === 'Workflow' || pend.name === 'SendMessage') && !b.is_error) this.teamResult(s, pend.name, b.tool_use_id, line && line.toolUseResult, ts);
               a.pending = Math.max(0, a.pending - 1);
               if (a.pending > 0) a.pendingSince = ts;
               // errori di fila sullo stesso strumento
@@ -971,6 +1102,8 @@ class OfficeState extends EventEmitter {
       todosAt: s.todosAt,
       plan: s.plan,
       releases: s.releases.slice(-12),
+      workflows: [...s.workflows.values()].map(r => this.workflowSnapshot(s, r)),
+      messages: s.messages.slice(-30),
       party: s.party,
       main: supervise(pub(s.main, rate), s, t),
       subs: [...s.subs.values()].sort((x, y) => x.startedAt - y.startedAt).map(a => pub(numbered(s, a), rate)),
@@ -1101,7 +1234,7 @@ function pub(a, rate) {
   const tok = a.tok.in + a.tok.out + a.tok.cr + a.tok.cw;
   return {
     id: a.id, kind: a.kind, type: a.type, seq: a.seq || 0, name: a.name || '', description: a.description,
-    parentId: a.parentId || null, team: a.team || '', phase: a.phase || '',
+    parentId: a.parentId || null, team: a.team || '', phase: a.phase || '', workflow: a.workflow || '',
     status: a.status, action: a.action, toolCount: a.toolCount, background: !!a.background,
     startedAt: a.startedAt, lastActivity: a.lastActivity, statusSince: a.statusSince, finished: a.finished,
     tokens: tok, cost: weight(a.tok) * rate,
